@@ -161,12 +161,100 @@ pub fn submit(
     let path = ledger_path(&loaded.state_root, ledger, false)?;
     let targets = [path.path.as_path(), path.lock.as_path()];
     crate::git_preflight::refuse_tracked_targets(&loaded.state_root, &targets)?;
-    with_lock(&path, || {
+    let artifact = artifact.to_owned();
+    submit_locked(loaded, &path, agent, outcome, None, artifact_root, || {
+        Ok(artifact)
+    })
+}
+
+/// The exact assignment selected by the work façade before it reads the
+/// agent's result.  It is kept private to the crate so raw protocol identity
+/// never becomes part of the façade surface.
+#[derive(Debug, Clone)]
+pub(crate) struct AssignmentIdentity {
+    pub(crate) stage: u64,
+    pub(crate) attempt: u64,
+    pub(crate) agent: String,
+    pub(crate) role: String,
+}
+
+impl AssignmentIdentity {
+    pub(crate) fn from_action(action: &Value) -> Result<Self, String> {
+        let packet = action
+            .get("packet")
+            .ok_or("current work action has no assignment packet")?;
+        Ok(Self {
+            stage: packet["stage"]
+                .as_u64()
+                .ok_or("current work action has invalid stage")?,
+            attempt: packet["attempt"]
+                .as_u64()
+                .ok_or("current work action has invalid attempt")?,
+            agent: packet["agent"]
+                .as_str()
+                .ok_or("current work action has no agent")?
+                .to_owned(),
+            role: packet["role"]
+                .as_str()
+                .ok_or("current work action has no role")?
+                .to_owned(),
+        })
+    }
+
+    fn matches(&self, assignment: &Value) -> bool {
+        assignment["stage"].as_u64() == Some(self.stage)
+            && assignment["attempt"].as_u64() == Some(self.attempt)
+            && assignment["agent"].as_str() == Some(&self.agent)
+            && assignment["role"].as_str() == Some(&self.role)
+    }
+}
+
+/// Submit a work result after revalidating the façade's exact assignment
+/// under the ledger lock.  The artifact is produced only after that check.
+pub(crate) fn submit_for_assignment<F>(
+    loaded: &Loaded,
+    ledger: &str,
+    expected: AssignmentIdentity,
+    outcome: &str,
+    artifact: F,
+) -> Result<Value, String>
+where
+    F: FnOnce() -> Result<String, String>,
+{
+    let path = ledger_path(&loaded.state_root, ledger, false)?;
+    let targets = [path.path.as_path(), path.lock.as_path()];
+    crate::git_preflight::refuse_tracked_targets(&loaded.state_root, &targets)?;
+    let agent = expected.agent.clone();
+    submit_locked(
+        loaded,
+        &path,
+        &agent,
+        outcome,
+        Some(&expected),
+        Some("state"),
+        artifact,
+    )
+}
+
+fn submit_locked<F>(
+    loaded: &Loaded,
+    path: &run_ledger::LedgerPath,
+    agent: &str,
+    outcome: &str,
+    expected: Option<&AssignmentIdentity>,
+    artifact_root: Option<&str>,
+    artifact: F,
+) -> Result<Value, String>
+where
+    F: FnOnce() -> Result<String, String>,
+{
+    let targets = [path.path.as_path(), path.lock.as_path()];
+    with_lock(path, || {
         crate::git_preflight::refuse_tracked_targets(&loaded.state_root, &targets)?;
-        if claim_path(&path).exists() {
+        if claim_path(path).exists() {
             return Err("run has been superseded; no mutation was made".into());
         }
-        let (_, events, source) = load_at(loaded, &path)?;
+        let (_, events, source) = load_at(loaded, path)?;
         let state = run_state::reduce(&events)?;
         assert_no_drift(loaded, &state)?;
         crate::run_artifact::assert_current(loaded, &state)?;
@@ -174,7 +262,16 @@ pub fn submit(
             .into_iter()
             .find(|item| item["agent"] == agent)
             .ok_or_else(|| format!("agent '{agent}' is not currently pending"))?;
-        let artifact_value = crate::run_artifact::evidence(loaded, artifact_root, artifact)?;
+        if let Some(expected) = expected {
+            if !expected.matches(&assignment) {
+                return Err(
+                    "assignment changed while work result was being read; no mutation was made"
+                        .into(),
+                );
+            }
+        }
+        let artifact = artifact()?;
+        let artifact_value = crate::run_artifact::evidence(loaded, artifact_root, &artifact)?;
         let last = events.last().ok_or("run ledger has no head event")?;
         // Preserve the ledger's historical event version. Optional fields
         // must not silently upgrade a v3 checked run on its next submission.
@@ -198,7 +295,7 @@ pub fn submit(
                     let mut protected = events.clone();
                     protected.push(protection.clone());
                     run_state::reduce(&protected)?;
-                    append(&path, &protection, false, &source)?;
+                    append(path, &protection, false, &source)?;
                     return Err(format!(
                         "acceptance refused: configured check evidence is {}",
                         assessment.reason().unwrap_or("blocked")
@@ -228,7 +325,7 @@ pub fn submit(
         let mut all = events;
         all.push(event.clone());
         let next_state = run_state::reduce(&all)?;
-        append(&path, &event, false, &source)?;
+        append(path, &event, false, &source)?;
         Ok(json!({
             "valid": true,
             "event": event,

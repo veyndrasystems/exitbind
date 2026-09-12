@@ -71,26 +71,26 @@ fn conversation_first_readme_keeps_setup_and_proof_safe_inside_git() {
     let readme = include_str!("../README.md");
     assert!(readme
         .starts_with("# Soulmate\n\nIt verifies what you asked an agent to do and what came back, in the same record."));
-    let conversation_start = readme.find("## Start with your existing agent\n").unwrap();
+    let conversation_start = readme
+        .find("## Start in your existing conversation\n")
+        .unwrap();
     let conversation_end = readme[conversation_start + 1..]
         .find("\n## ")
         .map(|offset| conversation_start + 1 + offset)
         .unwrap();
     let conversation = &readme[conversation_start..conversation_end];
-    assert!(conversation.contains("existing Codex or Claude lead"));
-    assert!(conversation.contains("ordinary\nlanguage"));
+    assert!(conversation.contains("current coding agent"));
     assert!(conversation.contains("https://github.com/veyndrasystems/soulmate"));
     assert!(conversation.contains("Inspect first"));
-    assert!(conversation.contains("Ordinary reversible work stays direct"));
-    assert!(conversation.contains("silence is never approval"));
-    assert!(conversation.contains("After approval, the lead manages"));
-    assert!(conversation.contains("Ask before either installation or a host-permission change"));
-    assert!(conversation.contains("Unless the project already requires a non-prerelease channel"));
-    assert!(conversation.contains("pinned current `v0.15.0-rc.4` preview"));
-    assert!(conversation.contains("prerelease in the"));
-    assert!(conversation.contains("human does not need to choose a channel first"));
-    assert!(conversation.contains("`0.12.0` remains opt-in when that requirement is stated"));
-    let post_setup_marker = "After setup, a normal-language request can remain simple:\n\n";
+    assert!(conversation.contains("Keep small reversible work direct"));
+    assert!(conversation.contains("After approval, it manages setup"));
+    assert!(conversation
+        .contains("asks only for real installation, project-write, or\npermission decisions"));
+    assert!(conversation.contains("Unless the project requires a stable-only channel"));
+    assert!(conversation.contains("pinned `v0.16.0-rc.1` preview"));
+    assert!(conversation.contains("name it as a prerelease"));
+    assert!(conversation.contains("Stable\n`0.12.0` remains an explicit alternative"));
+    let post_setup_marker = "After setup, ordinary requests stay ordinary:\n\n";
     let post_setup_start = conversation.find(post_setup_marker).unwrap() + post_setup_marker.len();
     let post_setup_end = conversation[post_setup_start..]
         .find("\n\n")
@@ -100,34 +100,35 @@ fn conversation_first_readme_keeps_setup_and_proof_safe_inside_git() {
     assert!(post_setup_prompt.starts_with("> Please update the theme, run the existing checks"));
     assert!(post_setup_prompt.contains("what still needs doing"));
     assert!(!post_setup_prompt.contains("Soulmate"));
-    assert!(readme.contains("current preview, `v0.15.0-rc.4`"));
-    assert!(readme.contains("stable release documentation"));
+    assert!(readme.contains("This page describes `v0.16.0-rc.1`"));
+    assert!(readme.contains("matching documentation"));
     assert!(readme.contains("349b662574b29a2b0366f53aac12d97f268bc84c"));
     assert!(readme.contains("Stable release"));
     let boundary = readme
-        .find("Before installing or using it, review the pinned command")
+        .find("Review the command and destination before")
         .unwrap();
     let install = readme
         .find("curl -fsSL https://raw.githubusercontent.com/")
         .unwrap();
     let channel = readme
-        .find("Unless the project already requires a non-prerelease channel")
+        .find("Unless the project requires a stable-only channel")
         .unwrap();
     let prompt = readme
         .find("> Set up Soulmate for this project from https://github.com/veyndrasystems/soulmate")
         .unwrap();
     assert!(
-        conversation_start < channel && channel < prompt && prompt < boundary && boundary < install
+        conversation_start < prompt && prompt < channel && channel < boundary && boundary < install
     );
     let provenance = readme
-        .find("When pre-install repository provenance is required")
+        .find("When repository provenance is required")
         .unwrap();
-    assert!(readme.contains("documented GitHub attestation verification"));
+    assert!(readme.contains("GitHub attestation verification"));
     assert!(boundary < provenance && provenance < install);
-    assert!(readme.contains("removes the temporary project and records by default"));
-    assert!(readme.contains("A real running task may leave a pending review or"));
-    assert!(readme.contains("assignment for your existing host"));
-    assert!(!readme.contains("that pending review"));
+    assert!(readme.contains("removes its records by default"));
+    assert!(readme.contains("work begin -> follow one returned action at a time"));
+    assert!(readme.contains("worker result -> frozen check -> independent review -> lead decision"));
+    assert!(readme.contains("If governed handling materially matters but activation"));
+    assert!(readme.contains("stops before scoped implementation"));
     let output = run_readme(&proof, &project, &bin, &temporary);
     assert!(output.contains("False-completion proof passed (14/14 assertions)."));
     let outcome = readme
@@ -164,6 +165,9 @@ fn conversation_first_readme_keeps_setup_and_proof_safe_inside_git() {
     assert!(output.contains("Bounded setup facts for your existing root agent"));
     assert!(!output.contains("Replace TASK"));
     assert!(output.contains("Setup does not start agents or grant host permissions."));
+    assert!(output.contains("Project-scoped selective preference: confirmed"));
+    assert!(output.contains("Fresh-session discovery: unverified"));
+    assert!(output.contains("Activation: not performed by setup"));
     assert_eq!(
         fs::read(project.join("work.txt")).unwrap(),
         b"unfinished user work\n"

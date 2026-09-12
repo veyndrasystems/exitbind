@@ -3,6 +3,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const SOULMATE: &str = include_str!("../skills/soulmate/SKILL.md");
+const SOULMATE_REFERENCE: &str = include_str!("../skills/soulmate/references/manual.md");
 const COFFEE: &str = include_str!("../skills/coffee/SKILL.md");
 const SKILL_MARKER: &str = "<!-- soulmate-managed-skill:v1 -->";
 const PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -58,17 +59,41 @@ struct SkillDestination {
 
 pub(crate) fn activate(control: &Path, coffee: bool) -> Result<(), String> {
     let destinations = selected_destinations(control, coffee)?;
+    if let Some(destination) = destinations
+        .iter()
+        .find(|destination| destination.state == SkillRefreshState::Refreshed)
+    {
+        return Err(format!(
+            "project skill differs from embedded bytes: {}; inspect it and explicitly run soulmate init --refresh-skills --root {}",
+            destination.path.display(),
+            control.display()
+        ));
+    }
     for destination in destinations {
-        if destination.path.exists() {
-            continue;
+        let directory = destination
+            .path
+            .parent()
+            .ok_or("project skill asset has no parent")?;
+        crate::managed_files::ensure_managed_directory(control, directory)?;
+        if destination.state == SkillRefreshState::Created {
+            crate::managed_files::write_exclusive(
+                &destination.path,
+                destination.content.as_bytes(),
+            )?;
         }
-        crate::managed_files::write_exclusive(&destination.path, destination.content.as_bytes())?;
     }
     Ok(())
 }
 
 pub(crate) fn refresh(control: &Path, coffee: bool) -> Result<Vec<SkillRefreshStatus>, String> {
     let destinations = selected_destinations(control, coffee)?;
+    for destination in &destinations {
+        let directory = destination
+            .path
+            .parent()
+            .ok_or("project skill asset has no parent")?;
+        crate::managed_files::ensure_managed_directory(control, directory)?;
+    }
     for destination in &destinations {
         match destination.state {
             SkillRefreshState::Created => crate::managed_files::write_exclusive(
@@ -170,7 +195,10 @@ fn has_managed_marker(bytes: &[u8]) -> bool {
 }
 
 fn selected_destinations(control: &Path, coffee: bool) -> Result<Vec<SkillDestination>, String> {
-    let mut assets = vec![("soulmate", "SKILL.md", SOULMATE)];
+    let mut assets = vec![
+        ("soulmate", "SKILL.md", SOULMATE),
+        ("soulmate", "references/manual.md", SOULMATE_REFERENCE),
+    ];
     if coffee {
         assets.push(("coffee", "SKILL.md", COFFEE));
     }
@@ -178,8 +206,10 @@ fn selected_destinations(control: &Path, coffee: bool) -> Result<Vec<SkillDestin
     for base in [".agents/skills", ".claude/skills"] {
         for (name, relative, content) in &assets {
             let path = control.join(base).join(name).join(relative);
-            let directory = path.parent().ok_or("project skill asset has no parent")?;
-            crate::managed_files::ensure_managed_directory(control, directory)?;
+            validate_managed_directory(
+                control,
+                path.parent().ok_or("project skill asset has no parent")?,
+            )?;
             let state = inspect_skill(&path, content)?;
             destinations.push(SkillDestination {
                 path,
@@ -191,6 +221,42 @@ fn selected_destinations(control: &Path, coffee: bool) -> Result<Vec<SkillDestin
         }
     }
     Ok(destinations)
+}
+
+fn validate_managed_directory(root: &Path, path: &Path) -> Result<(), String> {
+    let relative = path
+        .strip_prefix(root)
+        .map_err(|_| format!("managed path escapes project root: {}", path.display()))?;
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        current.push(component);
+        match fs::symlink_metadata(&current) {
+            Ok(info) if info.file_type().is_symlink() => {
+                return Err(format!(
+                    "managed directory must not be a symlink: {}",
+                    current.display()
+                ))
+            }
+            Ok(info) if !info.is_dir() => {
+                return Err(format!(
+                    "managed path must be a directory: {}",
+                    current.display()
+                ))
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    let real_root = fs::canonicalize(root).map_err(|e| e.to_string())?;
+    let real = fs::canonicalize(path).map_err(|e| e.to_string())?;
+    if !real.starts_with(real_root) {
+        return Err(format!(
+            "managed path escapes project root: {}",
+            path.display()
+        ));
+    }
+    Ok(())
 }
 
 fn inspect_skill(path: &Path, content: &str) -> Result<SkillRefreshState, String> {

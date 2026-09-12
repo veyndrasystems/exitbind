@@ -108,9 +108,9 @@ fn local_mode_separates_control_product_state_and_preserves_git_status() {
             < initialized_text.find("CLI reference").unwrap()
     );
     let brief = initialized_text.find("soulmate brief").unwrap();
-    let run = initialized_text.find("soulmate run start").unwrap();
+    let work = initialized_text.find("soulmate work begin").unwrap();
     let check = initialized_text.find("soulmate check").unwrap();
-    assert!(brief < run && run < check);
+    assert!(brief < work && work < check);
     assert!(git(&product, &["status", "--porcelain"]).stdout.is_empty());
     assert!(!product.join("soulmate.json").exists());
     assert!(!product.join(".soulmate").exists());

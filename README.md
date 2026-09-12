@@ -2,151 +2,174 @@
 
 It verifies what you asked an agent to do and what came back, in the same record.
 
-Soulmate adds a durable, inspectable thread around the coding agent you already
-use. Keep the goal, the work that was submitted, the check for the current
-attempt, review, and decision together. When work needs a bounded handoff,
-rework, or a resumable next assignment, the record makes the trail easy to
-follow. Simple, reversible work can stay in the direct conversation.
+Soulmate adds a bounded, resumable acceptance record to the coding agent you
+already use. You keep talking to your existing Codex or Claude lead. For work
+where independent review, recovery, or exact check evidence matters, the lead
+uses Soulmate automatically; small reversible work stays in the conversation.
+Soulmate is not another model, agent runtime, daemon, or cloud service.
 
 [![Rust primary CI](https://github.com/veyndrasystems/soulmate/actions/workflows/ci.yml/badge.svg)](https://github.com/veyndrasystems/soulmate/actions/workflows/ci.yml)
 [![Stable release](https://img.shields.io/github/v/release/veyndrasystems/soulmate)](https://github.com/veyndrasystems/soulmate/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## Start with your existing agent
+## Start in your existing conversation
 
-Keep using your existing Codex or Claude lead. Describe the work in ordinary
-language in that same root conversation. The lead inspects the repository and
-host first. Ask before either installation or a host-permission change; setup
-writes also require that approval. After approval, the lead manages the
-authorized setup and protocol in that root conversation.
-Ordinary reversible work stays direct.
+Give your current coding agent the repository once:
 
-Unless the project already requires a non-prerelease channel, the lead proposes
-the pinned current `v0.15.0-rc.4` preview and names it as a prerelease in the
-install approval. The human does not need to choose a channel first. Stable
-`0.12.0` remains opt-in when that requirement is stated; use its matching
-documentation.
+> Set up Soulmate for this project from https://github.com/veyndrasystems/soulmate. Inspect first, ask before installing, writing setup files, or changing permissions, then use it yourself when appropriate. Keep small reversible work direct.
 
-Use this short first request for the current project:
+The lead inspects first and asks only for real installation, project-write, or
+permission decisions. After approval, it manages setup and later Soulmate work
+inside the same root conversation. You do not need to learn commands, select a
+workflow, copy JSON, or carry ledger paths, event hashes, artifact paths, check
+results, handles, or recovery choices.
 
-> Set up Soulmate for this project from https://github.com/veyndrasystems/soulmate. Inspect first, ask before installing, writing setup files, or changing permissions, then manage it yourself and keep simple work direct.
+Unless the project requires a stable-only channel, the lead should propose the
+pinned `v0.16.0-rc.1` preview and clearly name it as a prerelease. Stable
+`0.12.0` remains an explicit alternative with its
+[matching documentation](https://github.com/veyndrasystems/soulmate/tree/349b662574b29a2b0366f53aac12d97f268bc84c).
 
-Use Soulmate for bounded delegation, independent review, or resumable work;
-skip it for a typo or small reversible edit. You own the intended outcome,
-meaningful preferences, permissions, and decisions; silence is never approval.
-The existing host owns models, execution, and permissions. Soulmate owns its
-bounded records and lifecycle checks.
+After setup, ordinary requests stay ordinary:
 
-After setup, a normal-language request can remain simple:
+> Please update the theme, run the existing checks, and tell me what changed and what still needs doing.
 
-> Please update the theme, run the existing checks, and tell me what changed
-> and what still needs doing.
+At the start of a material task, the lead makes one lightweight choice. It uses
+Soulmate when bounded delegation, independent review, resumability,
+deterministic handoff/check evidence, false-completion protection, or a risky
+migration materially helps. A typo or tiny reversible edit remains direct.
 
-The root conversation stays the place where the human and lead coordinate. A
-bounded worker can claim completion, but the current attempt still needs its
-agreed check. A missing or failed check blocks acceptance; reviewer approval is
-not the lead's acceptance. Rework keeps earlier attempts available, and the
-host can retrieve the next validated assignment without inventing a new thread.
+These states are deliberately different:
 
-## Install and see the result
+| State | What it establishes |
+| --- | --- |
+| Available | Soulmate exists in the project or environment. |
+| Discovered | This agent session can see its project guidance. |
+| Selected | The lead chose governed handling for this task. |
+| Activated | A successful `work begin` created machine-observable work and returned the next action. |
 
-This page describes the current preview, `v0.15.0-rc.4`, for Linux x86_64 and
-macOS on Apple Silicon or Intel. The stable `0.12.0` channel remains available
-through the [stable release documentation](https://github.com/veyndrasystems/soulmate/tree/349b662574b29a2b0366f53aac12d97f268bc84c);
-preview and stable binaries are separate channels. The pinned installer writes one executable under
-`$HOME/.local/bin` and verifies its archive checksum. Your existing host still
-provides execution and permissions; `init` later writes reviewable project
-configuration and generated skill copies.
+Projected files and setup text do not prove discovery, future agent compliance,
+selection, or activation. If governed handling materially matters but activation
+is unavailable, the lead stops before scoped implementation and reports the
+failing layer instead of silently falling back.
 
-Before installing or using it, review the pinned command and destination. The
-benchmark uses no model or network and runs in a disposable project.
-When pre-install repository provenance is required, the lead can download the
-archive and follow the [documented GitHub attestation verification](REFERENCE.md#conversational-update-notice) before installing; routine installs can use the fast path below.
+## Install the preview and see the refusal
+
+This page describes `v0.16.0-rc.1` for Linux x86_64 and macOS on Apple Silicon
+or Intel. The pinned installer writes one executable under `$HOME/.local/bin`
+and verifies its archive checksum. Review the command and destination before
+approving installation. When repository provenance is required before install,
+follow the [GitHub attestation verification](REFERENCE.md#conversational-update-notice).
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.15.0-rc.4/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.16.0-rc.1/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Now run the model-free experiment from any directory:
+Run the setup-free, model-free experiment from any directory:
 
 ```sh
 soulmate benchmark
 ```
 
-Success starts with `False-completion proof passed (14/14 assertions).` Its
-short outcome is:
+Success starts with `False-completion proof passed (14/14 assertions).` The
+fixture uses real local command exit codes and synthetic actors to show:
 
 ```text
 Attempt 1 failed its current check, so acceptance was refused.
 Rework preserved that attempt; a fresh checked attempt still needed review and lead acceptance.
 ```
 
-The fixture uses real local command exit codes and synthetic actors. It runs in
-a disposable Git project, leaves your current project and its worktree
-untouched, and removes the temporary project and records by default. To keep
-inspectable records, use `soulmate benchmark --output NEW_DIRECTORY`.
-This demonstrates the refusal and recovery mechanism, not general token,
-time, quality, or adoption outcomes. See the [proof methodology](docs/value-proof-methodology.md).
+In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.
 
-In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact. A passing check still
-needs fresh review and a lead decision. [Host setup](docs/onboarding.md#ask-your-existing-host-to-manage-the-run)
-explains how the existing host carries out a pending assignment.
-A real running task may leave a pending review or assignment for your existing host to retrieve.
+The benchmark uses a disposable Git project, leaves the current worktree
+untouched, and removes its records by default. Use `soulmate benchmark --output
+NEW_DIRECTORY` to keep them. This proves the observed refusal and recovery
+path—not general time, token, quality, adoption, or human-behavior outcomes.
+See the [proof methodology](docs/value-proof-methodology.md).
 
-## Manual setup and the everyday path
+## What approved project setup creates
 
-From the project directory, initialize portable setup:
+For manual setup, run this from the project directory after approving its
+writes:
 
 ```sh
 soulmate init --mode portable --root .
 ```
 
-This writes reviewable configuration to `soulmate.json`, private ignored state
-to `.soulmate/`, and generated setup copies for Codex and Claude. It installs no
-hooks and does not start agents or grant host permissions. Review the printed
-configuration, skill paths, declared scope, and native agent mapping before
-project-scoped work; ask before any installation or permission change.
+`init` writes reviewable `soulmate.json`, private ignored state under
+`.soulmate/`, role profiles, and exact project-local Soulmate skill copies for
+Codex and Claude. It installs no hook, launches no agent, and grants no host or
+OS permission. Existing managed skill bytes that differ are never silently
+overwritten; inspect them and use the explicit refresh command printed by the
+CLI.
+
+Setup reports each layer honestly: binary availability, skill projection,
+unverified fresh- and active-session discovery, task selection not yet
+performed, and activation not yet performed. Review the generated task
+boundaries and native worker/reviewer mapping before project-scoped work. Empty
+starter boundaries are valid configuration, not permission to read, write, or
+run project commands.
 
 Codex and Claude are generated setup paths. OpenCode is documented as
-path-compatible through `.agents/skills/soulmate/`, but host execution is not
-exercised by Soulmate CI; OpenCode remains the executor. Other hosts may have
-their own documented skill paths and consent rules. [Onboarding details](docs/onboarding.md#keep-the-host-you-already-use).
+path-compatible through `.agents/skills/soulmate/`, but Soulmate CI does not
+exercise its host execution. Other hosts retain their own discovery and consent
+contracts. See [host onboarding](docs/onboarding.md#keep-the-host-you-already-use).
 
-The normal protocol path is `init -> brief -> run -> check`. A check freezes the
-command and binds its result to the submitted artifact. `soulmate check`
-validates configuration, profiles, and declared boundaries; it does not run
-your project tests. Use the [scripted checked-work example](docs/first-checked-run.md#try-the-complete-example)
-for a longer, executable walkthrough.
+## How governed work proceeds
 
-## When work needs repair or resumption
+The lead uses the high-level `work` surface; the human does not:
 
-Ask the agent to resume the run or explain what remains. If you need the manual
-record view, `run status` shows the current claim, artifact condition, reported
-check, review, and acceptance; `run next` retrieves a validated pending
-assignment; `run inspect` retains the history. A failed check needs explicit
-rework with fresh artifacts and review.
-Recorded artifact bytes must match disk bytes, or no new run event is written.
-The record recovers task evidence, not the host's conversation.
+```text
+normal request
+  -> classify once
+  -> small and reversible: work directly
+  -> governed: work begin -> follow one returned action at a time
+       -> worker result -> frozen check -> independent review -> lead decision
+```
 
-## Trust, feedback, and deeper reading
+`work begin` creates a checked run and returns an opaque work handle plus one
+validated next action. `work return` stores role results in managed artifacts,
+`work check` executes and binds the frozen local policy to the current worker,
+and `work resume` reports zero, one, or multiple active work items without
+guessing. The façade hides routine ledger/event/target/check bookkeeping from
+the lead while preserving it in the strict record.
 
-Keep raw ledgers, assignments, and result documents private: they can contain
-goals, commands, and paths. Read [SECURITY.md](SECURITY.md) before real work.
-The next real-use validation is external users trying the URL-first setup. If
-you try it, share what worked, where setup needed clarification, or whether you
-reused the record through a [GitHub issue](https://github.com/veyndrasystems/soulmate/issues).
+The [matched control-surface evaluation](docs/agent-first-evaluation.md)
+executes the same strict checked workflow through both interfaces and reports
+only directly observed protocol-transport differences.
 
-- [First checked run](docs/first-checked-run.md) · [Host setup](docs/onboarding.md)
-- [Repair or resume](docs/repair-a-run.md) · [Translate the terminology](docs/glossary.md)
+Worker completion, a passing check, reviewer approval, and lead acceptance stay
+separate. A missing or failed check blocks acceptance. Rework preserves the old
+attempt and requires a fresh worker result, check, review, and decision. Artifact
+byte drift or configuration/profile/boundary drift stops mutation rather than
+inventing continuity.
+
+Low-level `run` commands remain the advanced interoperability and inspection
+surface. Use [the complete checked example](docs/first-checked-run.md),
+[repair and resumption guide](docs/repair-a-run.md), or
+[command reference](REFERENCE.md) when manual control is actually needed.
+
+## Trust, privacy, and compatibility
+
+Soulmate relies on the existing host for model execution, native subagents, and
+permissions. It does not authenticate a model's self-report or make local
+evidence tamper-proof against a process that can rewrite all project state.
+Keep raw ledgers and artifacts private: they can contain goals, commands,
+paths, and task results. Read [SECURITY.md](SECURITY.md) before real work.
+
+The `v0.16.0-rc.1` preview adds an agent-first façade and project selection
+contract without changing persisted run-event formats. New checked runs still
+use v4; v3 remains readable. Existing low-level commands and v1–v4 readers stay
+available. In the public check mapping, v3 supports caller-reported `record-check` only; v4 supports both reported `record-check` and observed `observe-check`. See the
+[public format map](CHANGELOG.md#public-tags-and-format-readers) before choosing
+a rollback or release channel.
+
+External contributors do not need Soulmate. Normal forks, patches, tests, and
+pull requests remain welcome through [CONTRIBUTING.md](CONTRIBUTING.md).
+
+- [Host onboarding](docs/onboarding.md) · [First checked run](docs/first-checked-run.md)
+- [Repair or resume](docs/repair-a-run.md) · [Terminology](docs/glossary.md)
 - [Optional memory, hooks, and receipts](docs/optional-surfaces.md)
-- [Windows and WSL 2](docs/windows-wsl.md) · [Commands and versioning](REFERENCE.md)
+- [Windows and WSL 2](docs/windows-wsl.md) · [Platform support](docs/platform-support.md)
 - [Usage findings](docs/participation-validation.md) · [Claim registry](proof/claims.json)
 - [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [License](LICENSE)
-
-<details>
-<summary>Release and format details</summary>
-
-The public check mapping is deliberately small: v3 supports caller-reported `record-check` only; v4 supports both reported `record-check` and observed `observe-check`. The current `v0.15.0-rc.4` preview creates v4 checked ledgers while retaining readable v3 ledgers; see the [format and reader map](CHANGELOG.md#public-tags-and-format-readers) when choosing a rollback or channel. A check is evidence for the current worker submission, not reviewer approval or lead acceptance.
-
-</details>

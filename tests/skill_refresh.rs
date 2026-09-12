@@ -7,6 +7,7 @@ use std::{
 };
 
 const SOULMATE_SKILL: &[u8] = include_bytes!("../skills/soulmate/SKILL.md");
+const SOULMATE_REFERENCE: &[u8] = include_bytes!("../skills/soulmate/references/manual.md");
 const AWAY_GUIDE: &str = include_str!("../docs/codex-tmux-away.md");
 const REFERENCE: &str = include_str!("../REFERENCE.md");
 const EXTERNAL_SENTINEL: &[u8] = b"host-owned sentinel\n";
@@ -75,29 +76,22 @@ fn attended_work_uses_native_spawn_without_away_fallback() {
         fs::read_to_string(control.join(".agents/skills/soulmate/SKILL.md")).unwrap();
     let claude_projection =
         fs::read_to_string(control.join(".claude/skills/soulmate/SKILL.md")).unwrap();
+    let agents_reference =
+        fs::read(control.join(".agents/skills/soulmate/references/manual.md")).unwrap();
+    let claude_reference =
+        fs::read(control.join(".claude/skills/soulmate/references/manual.md")).unwrap();
     let source = std::str::from_utf8(SOULMATE_SKILL).unwrap();
     assert_eq!(agents_projection.as_bytes(), SOULMATE_SKILL);
     assert_eq!(claude_projection.as_bytes(), SOULMATE_SKILL);
+    assert_eq!(agents_reference, SOULMATE_REFERENCE);
+    assert_eq!(claude_reference, SOULMATE_REFERENCE);
     let normalize = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
-
-    for skill in [source, &agents_projection, &claude_projection] {
-        let skill = normalize(skill);
-        assert!(skill.contains("every implementation worker and reviewer must use the host's native subagent spawn with the assignment's exact `nativeTaskName`"));
-        assert!(skill.contains("native spawn is unavailable, stop and return the pending assignment to the operator; do not fall back to shell `codex exec` or `soulmate away`"));
-        assert!(skill.contains("`openai/codex#31894`"));
-        assert!(skill.contains(
-            "`soulmate away` remains reserved for an explicit operator-away/disconnect handoff"
-        ));
-        assert!(skill.contains("soulmate away start AGENT LEDGER"));
-        assert!(skill.contains(
-            "Before `run start`, the coordinating root must select a fresh, unambiguous ledger path beneath configured StateRoot"
-        ));
-        assert!(skill.contains("never use a basename-only ProductRoot path"));
-        assert!(skill
-            .contains("Retain and reuse that exact path through status, recovery, and reporting"));
-        assert!(skill
-            .contains("do not ask the human to transport or decide routine ledger bookkeeping"));
-    }
+    assert!(source.contains("soulmate work begin WORKFLOW"));
+    assert!(source.contains("manual reference"));
+    let reference = normalize(std::str::from_utf8(SOULMATE_REFERENCE).unwrap()).to_lowercase();
+    assert!(reference.contains("soulmate run observe-check ledger --target worker_event_sha"));
+    assert!(reference.contains("soulmate run supersede old_ledger"));
+    assert!(reference.contains("never use a basename-only `productroot` path"));
 
     for document in [AWAY_GUIDE, REFERENCE] {
         let document = normalize(document);
@@ -136,7 +130,10 @@ fn portable_init_and_refresh_distribute_native_continuity_guidance() {
         output_text(&initialized)
     );
     let source = std::str::from_utf8(SOULMATE_SKILL).unwrap();
-    assert!(source.contains("## Native conversation continuity"));
+    assert!(source.contains("## HOW"));
+    assert!(product
+        .join(".agents/skills/soulmate/references/manual.md")
+        .is_file());
     let config_before = fs::read(product.join("soulmate.json")).unwrap();
     let paths = [
         product.join(".agents/skills/soulmate/SKILL.md"),
@@ -273,6 +270,67 @@ fn refresh_conflict_preflight_prevents_earlier_missing_creation() {
     fs::remove_dir_all(base).unwrap();
 }
 
+#[test]
+fn portable_init_stale_managed_skill_refuses_without_partial_tree() {
+    for (label, relative) in [
+        ("skill", ".agents/skills/soulmate/SKILL.md"),
+        ("reference", ".agents/skills/soulmate/references/manual.md"),
+    ] {
+        let base = temp(&format!("stale-{label}"));
+        let product = base.join("product");
+        let bindings = base.join("bindings");
+        let stale = product.join(relative);
+        fs::create_dir_all(stale.parent().unwrap()).unwrap();
+        fs::write(
+            &stale,
+            b"<!-- soulmate-managed-skill:v1 -->\nstale managed bytes\n",
+        )
+        .unwrap();
+        let before = snapshot_tree(&product);
+
+        let refused = invoke(
+            &[
+                "init",
+                "--mode",
+                "portable",
+                "--root",
+                product.to_str().unwrap(),
+            ],
+            &bindings,
+        );
+        assert!(!refused.status.success(), "{}", output_text(&refused));
+        assert!(output_text(&refused).contains("project skill differs from embedded bytes"));
+        assert_eq!(
+            fs::read(&stale).unwrap(),
+            b"<!-- soulmate-managed-skill:v1 -->\nstale managed bytes\n"
+        );
+        assert_eq!(snapshot_tree(&product), before);
+
+        fs::remove_dir_all(base).unwrap();
+    }
+}
+
+fn snapshot_tree(root: &Path) -> Vec<(PathBuf, bool, Vec<u8>)> {
+    fn visit(root: &Path, current: &Path, entries: &mut Vec<(PathBuf, bool, Vec<u8>)>) {
+        for entry in fs::read_dir(current).unwrap() {
+            let path = entry.unwrap().path();
+            let relative = path.strip_prefix(root).unwrap().to_path_buf();
+            let metadata = fs::symlink_metadata(&path).unwrap();
+            if metadata.is_dir() {
+                entries.push((relative, true, Vec::new()));
+                visit(root, &path, entries);
+            } else {
+                entries.push((relative, false, fs::read(&path).unwrap()));
+            }
+        }
+    }
+
+    let mut entries = Vec::new();
+    visit(root, root, &mut entries);
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    entries
+}
+
 fn relative_skill(path: &Path, control: &Path) -> String {
     path.strip_prefix(control)
         .unwrap()
@@ -283,6 +341,7 @@ fn relative_skill(path: &Path, control: &Path) -> String {
 fn reality_and_decision_guidance_is_embedded_and_distributed() {
     let (base, _product, control, _bindings) = local_project("reality-decision");
     let source = std::str::from_utf8(SOULMATE_SKILL).unwrap();
+    let reference = std::str::from_utf8(SOULMATE_REFERENCE).unwrap();
     let projections = [
         control.join(".agents/skills/soulmate/SKILL.md"),
         control.join(".claude/skills/soulmate/SKILL.md"),
@@ -293,49 +352,12 @@ fn reality_and_decision_guidance_is_embedded_and_distributed() {
     );
     let normalize = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
     let required = [
-        "authored source -> projection -> discovery -> invocation -> effective instructions/permissions -> behavior -> outcome",
-        "independently supported endpoint facts",
-        "minimum bridge assumption",
-        "test that connecting edge directly",
-        "endpoint presence or success does not prove the next link",
-        "verified within scope",
-        "failed",
-        "unverified",
-        "strongest supported claim",
-        "smallest decisive next probe",
-        "installation shows presence",
-        "none of these alone proves invocation",
-        "absent observed need or advantage in the tested context",
-        "faulty implementation",
-        "inconclusive test",
-        "change",
-        "keep",
-        "defer",
-        "stop",
-        "remaining unknowns",
-        "reopening condition",
-        "does not require initialization, a ledger, extra agents, durable memory, or a governed run",
-        "ordinary single-agent work proceeds directly",
-        "a standing project preference makes soulmate available for eligible work",
-        "does not govern every task",
-        "independent review, resumability, or deterministic handoff is actually needed",
-        "routine small, reversible edits stay direct",
-        "exact run, attempt, artifact, and context",
-        "may coexist across different findings",
-        "unavailable observation remains unverified",
-        "insufficient evidence is not product validation",
-        "precise owner decision",
-        "before a materially costly dependent phase, or before replacing or retiring a working capability",
-        "service, execution environment or host, and the relevant configuration, session, or capability",
-        "cheapest decisive, authorized evidence already available",
-        "unknown, merely reported, stale, or adjacent evidence",
-        "distinguish early feasibility from replacement readiness",
-        "actual supported-entry, selection, invocation, and required-behavior checks before cutover",
-        "a blocker stops only dependent work",
-        "recheck only required conditions that are volatile or were invalidated",
-        "do not retire a working fallback while any required replacement target lacks fresh target-matching evidence",
-        "a local native child is not execution on a remote target",
-        "keep ordinary reversible single-host work direct and proportionate",
+        "soulmate work begin workflow",
+        "do not ask the human to carry",
+        "worker completion is not a check result",
+        "reviewer approval is not lead acceptance",
+        "never guess among many",
+        "manual reference",
     ];
     for skill in std::iter::once(source.to_owned()).chain(
         projections
@@ -349,29 +371,19 @@ fn reality_and_decision_guidance_is_embedded_and_distributed() {
                 "missing {phrase:?} in distributed Soulmate skill"
             );
         }
-        let readiness = normalized.find("## target-bound readiness").unwrap();
-        let continuity = normalized
-            .find("## native conversation continuity")
-            .unwrap();
+        assert!(normalized.lines().count() < 140);
+    }
+    let delayed = normalize(reference).to_lowercase();
+    for phrase in [
+        "soulmate run observe-check ledger --target worker_event_sha",
+        "soulmate run supersede old_ledger",
+        "artifact drift blocks appends",
+        "existing v1–v4 readers and event shapes remain authoritative",
+    ] {
         assert!(
-            readiness < continuity,
-            "readiness guidance moved after continuity"
+            delayed.contains(phrase),
+            "missing {phrase:?} in delayed reference"
         );
-        let ordering = [
-            "before a materially costly dependent phase",
-            "distinguish early feasibility from replacement readiness",
-            "a blocker stops only dependent work",
-            "immediately before cutover",
-            "a local native child is not execution on a remote target",
-            "keep ordinary reversible single-host work direct and proportionate",
-        ];
-        for pair in ordering.windows(2) {
-            assert!(
-                normalized.find(pair[0]).unwrap() < normalized.find(pair[1]).unwrap(),
-                "readiness guidance order changed: {:?}",
-                pair
-            );
-        }
     }
     for projection in projections {
         assert_eq!(fs::read(projection).unwrap(), SOULMATE_SKILL);

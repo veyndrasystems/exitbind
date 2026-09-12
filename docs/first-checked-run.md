@@ -259,7 +259,7 @@ recorded bytes. Intentional governing-input changes need explicit
 [supersession](../REFERENCE.md#run-and-recovery) where permitted; accepted and
 rejected predecessors remain final.
 
-For the `v0.15.0-rc.4` preview, `run observe-check` can execute only the frozen
+For the `v0.16.0-rc.1` preview, `run observe-check` can execute only the frozen
 command locally while v3 ledgers remain report-only. After updating the binary, refresh owned project skills with `soulmate init
 --refresh-skills --root .` and reload the host. Keep a binary compatible with
 run-event format 3 for checked-ledger rollback. Remove optional hooks before

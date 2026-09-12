@@ -37,6 +37,7 @@ mod run_state;
 mod run_value;
 mod update;
 mod value_benchmark;
+mod work;
 
 fn main() {
     let raw = std::env::args_os().skip(1).collect::<Vec<_>>();

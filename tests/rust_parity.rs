@@ -56,7 +56,7 @@ fn entrypoint_help_and_version_forms_are_compatible() {
             "arguments {arguments:?}"
         );
         let help = String::from_utf8_lossy(&output.stdout);
-        assert!(help.contains("Core: init, brief, run, check"));
+        assert!(help.contains("Core: init, brief, work, check"));
         assert!(help.contains("init prepares portable project setup"));
         assert!(help.contains("the host runs project tests"));
         assert!(help.contains("soulmate benchmark"));

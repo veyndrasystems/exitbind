@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.15.0-rc.4/schema/soulmate.schema.json",
+  "$id": "https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.16.0-rc.1/schema/soulmate.schema.json",
   "title": "Soulmate project configuration",
   "type": "object",
   "required": ["version", "project", "orchestration", "agents", "workflows"],

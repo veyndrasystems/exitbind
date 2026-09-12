@@ -125,7 +125,16 @@ fn configured_command(command: &str, a: &Arguments) -> Result<(), String> {
     }
     if !matches!(
         command,
-        "check" | "brief" | "plan" | "verify" | "profile" | "memory" | "run" | "away" | "migrate"
+        "check"
+            | "brief"
+            | "plan"
+            | "verify"
+            | "profile"
+            | "memory"
+            | "run"
+            | "away"
+            | "migrate"
+            | "work"
     ) {
         return Err(format!("unknown command '{command}'"));
     }
@@ -140,7 +149,74 @@ fn configured_command(command: &str, a: &Arguments) -> Result<(), String> {
         "run" => run_command(&loaded, a),
         "away" => away_command(&loaded, a),
         "migrate" => migrate_command(&loaded, a),
+        "work" => work_command(&loaded, a),
         _ => Err(format!("unknown command '{command}'")),
+    }
+}
+
+fn work_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
+    let action = positional(a, 0, "work requires begin, next, return, check, or resume")?;
+    match action {
+        "begin" => {
+            args::assert_options(
+                "work begin",
+                a,
+                &[
+                    "config",
+                    "goal",
+                    "check-command",
+                    "boundary",
+                    "harness-receipt",
+                    "proof-origin",
+                ],
+            )?;
+            args::assert_positionals("work begin", a, 2)?;
+            print_json(&crate::work::begin(
+                l,
+                positional(a, 1, "work begin requires WORKFLOW")?,
+                option(a, "goal", "work begin requires --goal GOAL")?,
+                option(
+                    a,
+                    "check-command",
+                    "work begin requires --check-command COMMAND",
+                )?,
+                a.options.get("boundary").map(String::as_str),
+                a.options.get("harness-receipt").map(String::as_str),
+                a.options.get("proof-origin").map(String::as_str),
+            )?)
+        }
+        "next" => {
+            args::assert_options("work next", a, &["config"])?;
+            args::assert_positionals("work next", a, 2)?;
+            print_json(&crate::work::next(
+                l,
+                positional(a, 1, "work next requires WORK")?,
+            )?)
+        }
+        "return" => {
+            args::assert_options("work return", a, &["config", "outcome"])?;
+            args::assert_positionals("work return", a, 3)?;
+            print_json(&crate::work::return_result(
+                l,
+                positional(a, 1, "work return requires WORK ASSIGNMENT")?,
+                positional(a, 2, "work return requires WORK ASSIGNMENT")?,
+                option(a, "outcome", "work return requires --outcome OUTCOME")?,
+            )?)
+        }
+        "check" => {
+            args::assert_options("work check", a, &["config"])?;
+            args::assert_positionals("work check", a, 2)?;
+            print_json(&crate::work::check(
+                l,
+                positional(a, 1, "work check requires WORK")?,
+            )?)
+        }
+        "resume" => {
+            args::assert_options("work resume", a, &["config"])?;
+            args::assert_positionals("work resume", a, 1)?;
+            print_json(&crate::work::resume(l)?)
+        }
+        _ => Err("work requires begin, next, return, check, or resume".into()),
     }
 }
 
@@ -733,7 +809,7 @@ fn map_run_error(error: String, json_output: bool) -> String {
 
 fn print_help() {
     println!(
-        "Soulmate {VERSION}\n\nUsage: soulmate <command> [options]\n\nCore: init, brief, run, check\n  init prepares portable project setup and reviewable agent configuration.\n  brief presents one bounded task to an existing agent host.\n  run records the task, submissions, checks, review, and lead decision.\n  check validates configuration, profiles, and declared boundaries; the host runs project tests and reports their result.\n\nRun 'soulmate benchmark' for the model-free checked-work demonstration.\nRun 'soulmate help advanced' for run actions, recovery, migration, hooks, receipts, and optional surfaces."
+        "Soulmate {VERSION}\n\nUsage: soulmate <command> [options]\n\nCore: init, brief, work, check\n  init prepares portable project setup and reviewable agent configuration.\n  brief presents one bounded task to an existing agent host.\n  work drives a checked task through opaque next actions and managed evidence.\n  check validates configuration, profiles, and declared boundaries; the host runs project tests and reports their result.\n\nRun 'soulmate benchmark' for the model-free checked-work demonstration.\nRun 'soulmate help advanced' for work/run actions, recovery, migration, hooks, receipts, and optional surfaces."
     );
 }
 

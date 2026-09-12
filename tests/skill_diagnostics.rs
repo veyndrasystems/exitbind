@@ -8,6 +8,7 @@ use std::{
 };
 
 const SOULMATE_SKILL: &[u8] = include_bytes!("../skills/soulmate/SKILL.md");
+const SOULMATE_REFERENCE: &[u8] = include_bytes!("../skills/soulmate/references/manual.md");
 const COFFEE_SKILL: &[u8] = include_bytes!("../skills/coffee/SKILL.md");
 
 fn temp(label: &str) -> PathBuf {
@@ -47,9 +48,9 @@ fn hash(bytes: &[u8]) -> String {
 
 #[test]
 fn cache_guidance_keeps_host_and_session_layers_unverified() {
-    let guidance = String::from_utf8_lossy(SOULMATE_SKILL);
+    let guidance = String::from_utf8_lossy(SOULMATE_REFERENCE).to_lowercase();
     for phrase in [
-        "installed CLI bytes",
+        "installed cli bytes",
         "host's active materialization/cache",
         "current session",
         "active-session reload",

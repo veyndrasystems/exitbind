@@ -1,9 +1,26 @@
 # Changelog
 
-## 0.15.0-rc.4
+## 0.16.0-rc.1
 
+- Add the agent-first `work begin|next|return|check|resume` façade over the
+  existing strict run core. It allocates routine ledgers and artifacts, returns
+  opaque handles plus one next action, and keeps low-level `run` commands as the
+  advanced interoperability surface.
+- Establish a project-scoped selective-use contract: later supported agent
+  sessions classify material work, activate Soulmate before scoped mutation,
+  keep tiny reversible work direct, and return an explicit blocker when
+  selected governed handling cannot activate.
+- Separate available, discovered, selected, and activated states in generated
+  skill and setup guidance. Fresh initialization now refuses stale managed
+  projections instead of claiming exact embedded bytes and points to the
+  explicit skill-refresh path.
+- Move the complete low-level, recovery, and evidence guidance into a delayed
+  reference while keeping the always-loaded skill focused on selection,
+  authority, and the normal high-level path.
 - Make bridge assumptions explicit in Reality claims guidance: keep endpoint
   facts distinct, test the connecting edge, and bind evidence to its target.
+- Preserve run-event formats and existing v1-v4 readers; no migration, daemon,
+  model runtime, permission grant, or new dependency is introduced.
 
 ## 0.15.0-rc.3
 
@@ -67,13 +84,15 @@
 ## Public tags and format readers
 
 For a checked run using run-event format 3, retain a **0.12.0 or later
-compatible binary**. Inspect with `soulmate run inspect LEDGER --config CONFIG`;
-do not edit a ledger's format number to make a downgrade work.
+compatible binary**. For format 4, retain **0.15.0-rc.1 or later**. Inspect with
+`soulmate run inspect LEDGER --config CONFIG`; do not edit a ledger's format
+number to make a downgrade work.
 
-This frozen map covers the public tags observed at commit `243d781`.
-Reader support below is established from tagged source; current-reader tests
-also replay frozen historical fixtures. It is not a claim that every older
-downloaded binary was re-executed during this review.
+This frozen map covers selected public format-transition and retained-reader
+tags observed through `v0.15.0-rc.3` at commit `4faf2a7`. Reader support below
+is established from tagged source; current-reader tests also replay frozen
+historical fixtures. It is not a claim that every older downloaded binary was
+re-executed during this review.
 
 | Version | Public tag / source commit | Persisted format change | Inspect with this binary |
 | --- | --- | --- | --- |
@@ -81,6 +100,8 @@ downloaded binary was re-executed during this review.
 | 0.12.0 | [v0.12.0](https://github.com/veyndrasystems/soulmate/tree/v0.12.0), `349b662` | Adds checked run events 3 | Receipts 1–2; run events 1–3; memory, configuration and harness manifest 1. |
 | 0.12.1-rc.1 | [v0.12.1-rc.1](https://github.com/veyndrasystems/soulmate/tree/v0.12.1-rc.1), `23e04df` | None | Same persisted readers as 0.12.0. |
 | 0.12.1-rc.2 | [v0.12.1-rc.2](https://github.com/veyndrasystems/soulmate/tree/v0.12.1-rc.2), `243d781` | None | Same persisted readers as 0.12.0. |
+| 0.15.0-rc.1 | [v0.15.0-rc.1](https://github.com/veyndrasystems/soulmate/tree/v0.15.0-rc.1), `8b3a509` | Adds checked run events 4 with locally observed or caller-reported check acquisition | Receipts 1–2; run events 1–4; memory, configuration and harness manifest 1. |
+| 0.15.0-rc.3 | [v0.15.0-rc.3](https://github.com/veyndrasystems/soulmate/tree/v0.15.0-rc.3), `4faf2a7` | None | Same persisted readers as 0.15.0-rc.1. |
 
 The parentless public root `a0b8be3` contains package 0.10.0 without a
 corresponding public release tag in this observed map. Earlier changelog

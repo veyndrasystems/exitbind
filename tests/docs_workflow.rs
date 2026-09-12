@@ -191,21 +191,26 @@ fn checked_result_docs_keep_v3_v4_and_current_preview_boundaries_consistent() {
     let first = read("docs/first-checked-run.md");
     let methodology = read("docs/value-proof-methodology.md");
     let glossary = read("docs/glossary.md");
+    let changelog = read("CHANGELOG.md");
     let cli = read("src/cli.rs");
     for document in [&readme, &reference, &security] {
-        assert!(document.contains("v0.15.0-rc.4"));
+        assert!(document.contains("v0.16.0-rc.1"));
         assert!(!document.contains("unreleased v4"));
     }
     assert!(readme.contains(
         "v3 supports caller-reported `record-check` only; v4 supports both reported `record-check` and observed `observe-check`"
     ));
-    assert!(readme.contains("current `v0.15.0-rc.4` preview creates v4 checked ledgers"));
-    assert!(readme.contains("retaining readable v3 ledgers"));
+    assert!(readme.contains("New checked runs still\nuse v4; v3 remains readable"));
+    assert!(readme.contains("v3 remains readable"));
+    assert!(changelog.contains("For format 4, retain **0.15.0-rc.1 or later**"));
+    assert!(changelog.contains(
+        "| 0.15.0-rc.1 | [v0.15.0-rc.1](https://github.com/veyndrasystems/soulmate/tree/v0.15.0-rc.1), `8b3a509` | Adds checked run events 4"
+    ));
     assert!(reference.contains("Historical checked runs use run-event version 3"));
     assert!(security.contains("v3 supports caller-reported `run record-check` only"));
     assert!(security
         .contains("supports both reported `run record-check` and local `run observe-check`"));
-    assert!(security.contains("`v0.15.0-rc.4`\npreview supports both reported"));
+    assert!(security.contains("`v0.16.0-rc.1`\npreview supports both reported"));
     assert!(reference.contains("1,800,000 ms (30 minute)\ndefault deadline"));
     assert!(reference.contains("positive `--timeout-ms MS` override"));
     assert!(
@@ -220,7 +225,7 @@ fn checked_result_docs_keep_v3_v4_and_current_preview_boundaries_consistent() {
     );
     assert!(first.contains("historical v3 procedure"));
     assert!(methodology.contains("v3 `run record-check` is caller-reported-only"));
-    assert!(methodology.contains("`v0.15.0-rc.4` preview adds v4 observed-or-reported"));
+    assert!(methodology.contains("`v0.16.0-rc.1` preview adds v4 observed-or-reported"));
     assert!(
         glossary.contains("only check route in v3")
             && glossary.contains("one permitted route in v4")

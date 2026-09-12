@@ -77,6 +77,8 @@ pub fn init_with_options(
         agents_dir.join("reviewer.md"),
         control.join(".agents/skills/soulmate/SKILL.md"),
         control.join(".claude/skills/soulmate/SKILL.md"),
+        control.join(".agents/skills/soulmate/references/manual.md"),
+        control.join(".claude/skills/soulmate/references/manual.md"),
     ];
     target_paths.extend(
         crate::project_layout::CANONICAL_CONTROL_DIRS.map(|relative| control.join(relative)),
@@ -99,6 +101,7 @@ pub fn init_with_options(
         .collect::<Vec<_>>();
     crate::git_preflight::refuse_tracked_targets(&control, &control_targets)?;
     crate::git_preflight::refuse_tracked_targets(&state, &state_targets)?;
+    project_skills::activate(&control, coffee)?;
     crate::managed_files::ensure_managed_directory(&state, &state.join(".soulmate"))?;
     let state_dir = state.join(".soulmate");
     preserve_or_create(
@@ -117,8 +120,6 @@ pub fn init_with_options(
         let relative = format!("{}/{name}.md", crate::project_layout::CANONICAL_AGENTS_DIR);
         preserve_or_create(&control.join(&relative), content, &relative, &control)?;
     }
-
-    project_skills::activate(&control, coffee)?;
     if selected_mode == "local" {
         crate::project_layout::create_binding(
             project_id.ok_or("local init requires --project-id")?,
