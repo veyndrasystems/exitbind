@@ -86,7 +86,7 @@ fn conversation_first_readme_keeps_setup_and_proof_safe_inside_git() {
     assert!(conversation.contains("After approval, the lead manages"));
     assert!(conversation.contains("Ask before either installation or a host-permission change"));
     assert!(conversation.contains("Unless the project already requires a non-prerelease channel"));
-    assert!(conversation.contains("pinned current `v0.15.0-rc.2` preview"));
+    assert!(conversation.contains("pinned current `v0.15.0-rc.3` preview"));
     assert!(conversation.contains("prerelease in the"));
     assert!(conversation.contains("human does not need to choose a channel first"));
     assert!(conversation.contains("`0.12.0` remains opt-in when that requirement is stated"));
@@ -100,7 +100,7 @@ fn conversation_first_readme_keeps_setup_and_proof_safe_inside_git() {
     assert!(post_setup_prompt.starts_with("> Please update the theme, run the existing checks"));
     assert!(post_setup_prompt.contains("what still needs doing"));
     assert!(!post_setup_prompt.contains("Soulmate"));
-    assert!(readme.contains("current preview, `v0.15.0-rc.2`"));
+    assert!(readme.contains("current preview, `v0.15.0-rc.3`"));
     assert!(readme.contains("stable release documentation"));
     assert!(readme.contains("349b662574b29a2b0366f53aac12d97f268bc84c"));
     assert!(readme.contains("Stable release"));

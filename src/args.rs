@@ -38,6 +38,7 @@ const VALUE_OPTIONS: &[&str] = &[
     "state-root",
     "task",
     "target",
+    "timeout-ms",
     "workflow",
 ];
 const BOOLEAN_OPTIONS: &[&str] = &[

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.15.0-rc.3
+
+- Bound local `run observe-check` execution with a configurable timeout, run it
+  outside the ledger lock, terminate its POSIX process group on timeout, and
+  revalidate the complete durable binding before append.
+- Distinguish locally observed, host-reported, and mixed check acquisition in
+  human status while keeping check, review, and lead acceptance separate.
+- Route setup-purpose agents from contributor instructions to README onboarding
+  and keep Coffee's context guidance role-based.
+
 ## 0.15.0-rc.2
 
 - Separate human contribution guidance from repository instructions for coding

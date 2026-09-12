@@ -30,7 +30,7 @@ or execution system.
   verification. Feed that brief into the existing `soulmate brief` or
   `soulmate plan` flow; do not create a second recipe or orchestration schema.
 - When the brief recommends a subagent, name its context mode. Implementation
-  agents `sonic`, `worker`, and `default` may use bounded inherited task turns.
+  roles may use bounded inherited task turns.
   Reviewers, advisers, auditors, and claim-scoped verifiers use
   `fork_turns="none"` plus a complete packet containing the claim, scope,
   authority boundary, allowed evidence, and output contract. A host-side

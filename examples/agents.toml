@@ -4,7 +4,7 @@ agents = ["claude", "codex", "grok"]
 [[plugins]]
 name = "soulmate"
 source = "veyndrasystems/soulmate"
-ref = "v0.15.0-rc.2"
+ref = "v0.15.0-rc.3"
 path = "."
 targets = ["claude", "codex", "grok"]
 

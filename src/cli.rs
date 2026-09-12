@@ -461,7 +461,7 @@ fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
             "duration-ms",
             "json",
         ][..],
-        "observe-check" => &["config", "target", "json"][..],
+        "observe-check" => &["config", "target", "timeout-ms", "json"][..],
         "status" => &["config", "json"][..],
         "explain" => &["config", "event", "json"][..],
         "report" => &["config", "json"][..],
@@ -551,6 +551,7 @@ fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
                 l,
                 positional(a, 1, "run observe-check requires LEDGER")?,
                 option(a, "target", "run observe-check requires --target")?,
+                a.options.get("timeout-ms").map(String::as_str),
             )
         }
         "status" => {
@@ -747,7 +748,8 @@ fn print_advanced_help() {
             "Run value proof: new v4 runs may observe the frozen check locally with 'run observe-check' or record a host report with 'run record-check'; historical v3 runs are reported-only. Use 'run status', 'run explain', and 'run report' for bounded evidence views.",
         )
     );
-    println!("  Checked v4 runs may use: soulmate run observe-check LEDGER --target EVENT_SHA");
+    println!("  Checked v4 runs may use: soulmate run observe-check LEDGER --target EVENT_SHA [--timeout-ms MS]");
+    println!("  Local observation defaults to a 1,800,000 ms (30 minute) timeout; --timeout-ms must be positive.");
     println!("Run 'soulmate update' to explicitly install the newest allowed release.");
 }
 

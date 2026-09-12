@@ -3,7 +3,9 @@ mod support;
 use serde_json::Value;
 use std::fs;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 fn call(root: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_soulmate"))
@@ -100,6 +102,41 @@ fn checked_worker(label: &str, command: &str) -> (std::path::PathBuf, String, St
     (root, ledger, target)
 }
 
+fn wait_for_path(path: &Path) {
+    let started = Instant::now();
+    while !path.exists() && started.elapsed() < Duration::from_secs(2) {
+        thread::sleep(Duration::from_millis(10));
+    }
+    assert!(path.exists(), "timed out waiting for {}", path.display());
+}
+
+fn configure_workers(root: &Path, workers: &[&str]) {
+    let config_path = root.join("soulmate.json");
+    let mut config: Value = serde_json::from_slice(&fs::read(&config_path).unwrap()).unwrap();
+    let base = config["agents"]["worker"].clone();
+    for worker in workers.iter().copied().filter(|worker| *worker != "worker") {
+        let mut agent = base.clone();
+        agent["profile"] = serde_json::json!(format!("soulmate/agents/{worker}.md"));
+        agent["purpose"] = serde_json::json!(format!("Complete bounded work for {worker}."));
+        config["agents"][worker] = agent;
+        fs::write(
+            root.join(format!("soulmate/agents/{worker}.md")),
+            format!("# {worker}\n\nComplete bounded work.\n"),
+        )
+        .unwrap();
+    }
+    config["workflows"]["change"]["workers"] = serde_json::json!(workers);
+    fs::write(config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+}
+
+#[cfg(unix)]
+fn process_exists(pid: i32) -> bool {
+    if unsafe { libc::kill(pid, 0) } == 0 {
+        return true;
+    }
+    std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+}
+
 #[test]
 fn observes_frozen_command_in_product_root_and_records_provenance() {
     let root = support::temp("observe-check");
@@ -191,6 +228,7 @@ fn observes_frozen_command_in_product_root_and_records_provenance() {
         &["run", "status", ledger, "--config", "soulmate.json"],
     );
     assert!(human.status.success(), "{}", text(&human));
+    assert!(text(&human).contains("Locally observed check: passed"));
     assert!(text(&human).contains("acquisition=observed"));
     assert!(text(&human).contains("kind\":\"exit\""));
     let report = run(
@@ -453,6 +491,290 @@ fn passing_observation_does_not_auto_review_or_accept() {
     assert_eq!(status["checks"]["status"], "passed");
     assert_eq!(status["review"]["status"], "absent");
     assert_eq!(status["acceptance"]["status"], "absent");
+    let human = call(
+        &root,
+        &["run", "status", &ledger, "--config", "soulmate.json"],
+    );
+    let human = text(&human);
+    assert!(human.contains("Locally observed check: passed"));
+    assert!(human.contains("Reviewer outcome: reviewer (reviewer) stage 3 pending"));
+    assert!(human.contains("Lead decision: pending"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn human_status_distinguishes_reported_observed_and_mixed_acquisition() {
+    let root = support::temp("observe-mixed");
+    let init = call(&root, &["init", "--root", "."]);
+    assert!(init.status.success(), "{}", text(&init));
+    configure_workers(&root, &["worker", "worker_two"]);
+    let ledger = ".soulmate/runs/mixed.jsonl";
+    run(
+        &root,
+        &[
+            "run",
+            "start",
+            "change",
+            "--goal",
+            "mixed",
+            "--ledger",
+            ledger,
+            "--check-command",
+            "exit 0",
+            "--config",
+            "soulmate.json",
+        ],
+    );
+    fs::write(root.join(".soulmate/artifacts/mixed.md"), "mixed\n").unwrap();
+    run(
+        &root,
+        &[
+            "run",
+            "submit",
+            "lead",
+            ledger,
+            "--outcome",
+            "scoped",
+            "--artifact",
+            ".soulmate/artifacts/mixed.md",
+            "--artifact-root",
+            "state",
+            "--config",
+            "soulmate.json",
+        ],
+    );
+    let mut targets = Vec::new();
+    for worker in ["worker", "worker_two"] {
+        let submitted = run(
+            &root,
+            &[
+                "run",
+                "submit",
+                worker,
+                ledger,
+                "--outcome",
+                "completed",
+                "--artifact",
+                ".soulmate/artifacts/mixed.md",
+                "--artifact-root",
+                "state",
+                "--config",
+                "soulmate.json",
+            ],
+        );
+        targets.push(
+            submitted["event"]["eventSha256"]
+                .as_str()
+                .unwrap()
+                .to_owned(),
+        );
+    }
+    run(
+        &root,
+        &[
+            "run",
+            "record-check",
+            ledger,
+            "--target",
+            &targets[0],
+            "--check-command",
+            "exit 0",
+            "--exit-code",
+            "0",
+            "--config",
+            "soulmate.json",
+        ],
+    );
+    run(
+        &root,
+        &[
+            "run",
+            "observe-check",
+            ledger,
+            "--target",
+            &targets[1],
+            "--config",
+            "soulmate.json",
+        ],
+    );
+    let human = call(
+        &root,
+        &["run", "status", ledger, "--config", "soulmate.json"],
+    );
+    let human = text(&human);
+    assert!(human.contains("Configured check: passed (mixed acquisition; see targets)"));
+    assert!(human.contains("acquisition=reported"));
+    assert!(human.contains("acquisition=observed"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn advanced_help_documents_the_positive_observe_timeout() {
+    let output = Command::new(env!("CARGO_BIN_EXE_soulmate"))
+        .args(["help", "advanced"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", text(&output));
+    let help = text(&output);
+    assert!(help.contains("[--timeout-ms MS]"));
+    assert!(help.contains("1,800,000 ms (30 minute) timeout"));
+    assert!(help.contains("--timeout-ms must be positive"));
+}
+
+#[cfg(unix)]
+#[test]
+fn timeout_cleans_descendants_appends_nothing_and_allows_recovery() {
+    let command = "if [ -f allow-check ]; then exit 0; fi; trap '' TERM; sh -c 'trap \"\" TERM; echo $$ > child.pid; while :; do sleep 30; done' & wait";
+    let (root, ledger, target) = checked_worker("observe-timeout", command);
+    let before = fs::read(root.join(&ledger)).unwrap();
+    let started = Instant::now();
+    let timed_out = call(
+        &root,
+        &[
+            "run",
+            "observe-check",
+            &ledger,
+            "--target",
+            &target,
+            "--timeout-ms",
+            "100",
+            "--config",
+            "soulmate.json",
+        ],
+    );
+    assert!(!timed_out.status.success(), "{}", text(&timed_out));
+    assert!(text(&timed_out).contains("timed out after 100 ms"));
+    assert!(started.elapsed() < Duration::from_secs(2));
+    assert_eq!(fs::read(root.join(&ledger)).unwrap(), before);
+
+    let child_pid: i32 = fs::read_to_string(root.join("child.pid"))
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    assert!(!process_exists(child_pid), "timed-out descendant survived");
+    let status = run(
+        &root,
+        &[
+            "run",
+            "status",
+            &ledger,
+            "--json",
+            "--config",
+            "soulmate.json",
+        ],
+    );
+    assert_eq!(status["status"], "running");
+    assert_eq!(status["checks"]["status"], "not_observed");
+    assert_eq!(status["acceptance"]["status"], "absent");
+    let human = call(
+        &root,
+        &["run", "status", &ledger, "--config", "soulmate.json"],
+    );
+    assert!(text(&human).contains("local observe-check is available"));
+
+    fs::write(root.join("allow-check"), "ready\n").unwrap();
+    let recovered = call(
+        &root,
+        &[
+            "run",
+            "observe-check",
+            &ledger,
+            "--target",
+            &target,
+            "--timeout-ms",
+            "1000",
+            "--config",
+            "soulmate.json",
+        ],
+    );
+    assert!(recovered.status.success(), "{}", text(&recovered));
+    assert_eq!(json(&recovered)["event"]["result"]["code"], 0);
+
+    for timeout in ["0", "invalid"] {
+        let rejected = call(
+            &root,
+            &[
+                "run",
+                "observe-check",
+                &ledger,
+                "--target",
+                &target,
+                "--timeout-ms",
+                timeout,
+                "--config",
+                "soulmate.json",
+            ],
+        );
+        assert!(!rejected.status.success());
+        assert!(text(&rejected).contains("--timeout-ms must be a positive integer"));
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn concurrent_mutation_is_not_locked_out_and_stale_observation_is_refused() {
+    let command =
+        "printf started > observe-started; while [ ! -f observe-continue ]; do sleep 0.01; done";
+    let (root, ledger, target) = checked_worker("observe-race", command);
+    let observation = Command::new(env!("CARGO_BIN_EXE_soulmate"))
+        .current_dir(&root)
+        .args([
+            "run",
+            "observe-check",
+            &ledger,
+            "--target",
+            &target,
+            "--timeout-ms",
+            "2000",
+            "--config",
+            "soulmate.json",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    wait_for_path(&root.join("observe-started"));
+
+    let reviewer = call(
+        &root,
+        &[
+            "run",
+            "submit",
+            "reviewer",
+            &ledger,
+            "--outcome",
+            "approved",
+            "--artifact",
+            ".soulmate/artifacts/observe-race.md",
+            "--artifact-root",
+            "state",
+            "--config",
+            "soulmate.json",
+        ],
+    );
+    assert!(reviewer.status.success(), "{}", text(&reviewer));
+    fs::write(root.join("observe-continue"), "continue\n").unwrap();
+    let observed = observation.wait_with_output().unwrap();
+    assert!(!observed.status.success());
+    assert!(text(&observed).contains("ledger changed while observing"));
+    let inspected = run(
+        &root,
+        &[
+            "run",
+            "inspect",
+            &ledger,
+            "--json",
+            "--config",
+            "soulmate.json",
+        ],
+    );
+    assert!(inspected["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|event| event["action"] != "check"));
     fs::remove_dir_all(root).unwrap();
 }
 

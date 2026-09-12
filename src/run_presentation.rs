@@ -118,16 +118,25 @@ fn print_checks(
                 );
             } else if targets
                 .iter()
-                .all(|target| target.acquisition.as_deref() != Some("observed"))
+                .all(|target| target.acquisition.as_deref() == Some("reported"))
             {
                 println!(
                     "Host-reported check: {}; not executed by Soulmate; acquisition is shown per target; origin={}",
                     check_state(*state),
                     optional(origin.as_deref(), "unknown")
                 );
+            } else if targets
+                .iter()
+                .all(|target| target.acquisition.as_deref() == Some("observed"))
+            {
+                println!(
+                    "Locally observed check: {}; acquisition is shown per target; origin={}",
+                    check_state(*state),
+                    optional(origin.as_deref(), "unknown")
+                );
             } else {
                 println!(
-                    "Configured check: {}; acquisition is shown per target; origin={}",
+                    "Configured check: {} (mixed acquisition; see targets); origin={}",
                     check_state(*state),
                     optional(origin.as_deref(), "unknown")
                 );

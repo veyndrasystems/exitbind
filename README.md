@@ -22,7 +22,7 @@ authorized setup and protocol in that root conversation.
 Ordinary reversible work stays direct.
 
 Unless the project already requires a non-prerelease channel, the lead proposes
-the pinned current `v0.15.0-rc.2` preview and names it as a prerelease in the
+the pinned current `v0.15.0-rc.3` preview and names it as a prerelease in the
 install approval. The human does not need to choose a channel first. Stable
 `0.12.0` remains opt-in when that requirement is stated; use its matching
 documentation.
@@ -50,7 +50,7 @@ host can retrieve the next validated assignment without inventing a new thread.
 
 ## Install and see the result
 
-This page describes the current preview, `v0.15.0-rc.2`, for Linux x86_64 and
+This page describes the current preview, `v0.15.0-rc.3`, for Linux x86_64 and
 macOS on Apple Silicon or Intel. The stable `0.12.0` channel remains available
 through the [stable release documentation](https://github.com/veyndrasystems/soulmate/tree/349b662574b29a2b0366f53aac12d97f268bc84c);
 preview and stable binaries are separate channels. The pinned installer writes one executable under
@@ -64,7 +64,7 @@ When pre-install repository provenance is required, the lead can download the
 archive and follow the [documented GitHub attestation verification](REFERENCE.md#conversational-update-notice) before installing; routine installs can use the fast path below.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.15.0-rc.2/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.15.0-rc.3/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
@@ -147,6 +147,6 @@ reused the record through a [GitHub issue](https://github.com/veyndrasystems/sou
 <details>
 <summary>Release and format details</summary>
 
-The public check mapping is deliberately small: v3 supports caller-reported `record-check` only; v4 supports both reported `record-check` and observed `observe-check`. The current `v0.15.0-rc.2` preview creates v4 checked ledgers while retaining readable v3 ledgers; see the [format and reader map](CHANGELOG.md#public-tags-and-format-readers) when choosing a rollback or channel. A check is evidence for the current worker submission, not reviewer approval or lead acceptance.
+The public check mapping is deliberately small: v3 supports caller-reported `record-check` only; v4 supports both reported `record-check` and observed `observe-check`. The current `v0.15.0-rc.3` preview creates v4 checked ledgers while retaining readable v3 ledgers; see the [format and reader map](CHANGELOG.md#public-tags-and-format-readers) when choosing a rollback or channel. A check is evidence for the current worker submission, not reviewer approval or lead acceptance.
 
 </details>

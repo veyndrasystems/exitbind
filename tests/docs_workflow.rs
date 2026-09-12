@@ -99,6 +99,8 @@ fn contribution_audiences_and_coffee_contract_stay_separate() {
         "implementation-planner",
         "current agent's Soul",
         "Venus",
+        "`sonic`",
+        "`default`",
     ] {
         assert!(
             !coffee.contains(private_stack_term),
@@ -120,6 +122,9 @@ fn contribution_audiences_and_coffee_contract_stay_separate() {
 
     assert!(agents.contains("external coding agents modifying the Soulmate repository"));
     assert!(agents.contains("[CONTRIBUTING.md](CONTRIBUTING.md)"));
+    assert!(agents.contains("For setup in another project instead of changes here"));
+    assert!(agents.contains("\"Start with your existing agent\" path"));
+    assert!(!agents.contains("curl -fsSL"));
     assert!(contributing.contains("This guide is for human contributors"));
     assert!(contributing.contains("[AGENTS.md](AGENTS.md)"));
     assert!(contributing
@@ -188,26 +193,40 @@ fn checked_result_docs_keep_v3_v4_and_current_preview_boundaries_consistent() {
     let glossary = read("docs/glossary.md");
     let cli = read("src/cli.rs");
     for document in [&readme, &reference, &security] {
-        assert!(document.contains("v0.15.0-rc.2"));
+        assert!(document.contains("v0.15.0-rc.3"));
         assert!(!document.contains("unreleased v4"));
     }
     assert!(readme.contains(
         "v3 supports caller-reported `record-check` only; v4 supports both reported `record-check` and observed `observe-check`"
     ));
-    assert!(readme.contains("current `v0.15.0-rc.2` preview creates v4 checked ledgers"));
+    assert!(readme.contains("current `v0.15.0-rc.3` preview creates v4 checked ledgers"));
     assert!(readme.contains("retaining readable v3 ledgers"));
     assert!(reference.contains("Historical checked runs use run-event version 3"));
     assert!(security.contains("v3 supports caller-reported `run record-check` only"));
     assert!(security
         .contains("supports both reported `run record-check` and local `run observe-check`"));
-    assert!(security.contains("`v0.15.0-rc.2`\npreview supports both reported"));
+    assert!(security.contains("`v0.15.0-rc.3`\npreview supports both reported"));
+    assert!(reference.contains("1,800,000 ms (30 minute)\ndefault deadline"));
+    assert!(reference.contains("positive `--timeout-ms MS` override"));
+    assert!(
+        reference.contains("writes no check\nevent when launch, timeout, or durable binding fails")
+    );
+    assert!(security.contains("runs outside the ledger\nlock"));
+    assert_eq!(
+        security
+            .matches("A process that can rewrite all local\nevidence")
+            .count(),
+        1
+    );
     assert!(first.contains("historical v3 procedure"));
     assert!(methodology.contains("v3 `run record-check` is caller-reported-only"));
-    assert!(methodology.contains("`v0.15.0-rc.2` preview adds v4 observed-or-reported"));
+    assert!(methodology.contains("`v0.15.0-rc.3` preview adds v4 observed-or-reported"));
     assert!(
         glossary.contains("only check route in v3")
             && glossary.contains("one permitted route in v4")
     );
     assert!(cli.contains("historical v3 runs are reported-only"));
     assert!(cli.contains("new v4 runs may observe"));
+    assert!(cli.contains("[--timeout-ms MS]"));
+    assert!(cli.contains("1,800,000 ms (30 minute) timeout"));
 }

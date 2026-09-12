@@ -16,8 +16,13 @@ use run_ledger::{
 use serde_json::{json, Value};
 use std::fs;
 use std::io;
-use std::process::{Command, Stdio};
-use std::time::Instant;
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
+
+const DEFAULT_OBSERVE_TIMEOUT_MS: u64 = 1_800_000;
+const OBSERVE_POLL_MS: u64 = 10;
+const OBSERVE_TERMINATION_GRACE_MS: u64 = 250;
 
 pub fn start(
     loaded: &Loaded,
@@ -334,11 +339,20 @@ pub fn record_check(
 /// Execute the frozen policy command and bind its locally observed result to
 /// the exact current worker completion.  No caller-supplied command/result
 /// fields are accepted.
-pub fn observe_check(loaded: &Loaded, ledger: &str, target: &str) -> Result<Value, String> {
+pub fn observe_check(
+    loaded: &Loaded,
+    ledger: &str,
+    target: &str,
+    timeout_ms: Option<&str>,
+) -> Result<Value, String> {
+    let timeout_ms = timeout_ms
+        .map(|value| parse_positive("--timeout-ms", value))
+        .transpose()?
+        .unwrap_or(DEFAULT_OBSERVE_TIMEOUT_MS);
     let path = ledger_path(&loaded.state_root, ledger, false)?;
     let targets = [path.path.as_path(), path.lock.as_path()];
     crate::git_preflight::refuse_tracked_targets(&loaded.state_root, &targets)?;
-    with_lock(&path, || {
+    let (source, policy) = with_lock(&path, || {
         crate::git_preflight::refuse_tracked_targets(&loaded.state_root, &targets)?;
         if claim_path(&path).exists() {
             return Err("run has been superseded; no mutation was made".into());
@@ -360,21 +374,14 @@ pub fn observe_check(loaded: &Loaded, ledger: &str, target: &str) -> Result<Valu
         let policy = crate::run_value::policy_from_value(policy_value, 0)
             .map_err(|error| error.replacen("line 0", "state", 1))?;
         crate::run_value::validate_check_target(&state, target)?;
+        Ok((source, policy))
+    })?;
 
-        let started = Instant::now();
-        let child_stderr = child_stderr_stdio()?;
-        let status = Command::new("sh")
-            .arg("-c")
-            .arg(&policy.command)
-            .arg("soulmate-observe-check")
-            .current_dir(&loaded.product_root)
-            .stdout(child_stderr)
-            .stderr(Stdio::inherit())
-            .status()
-            .map_err(|error| format!("check command could not be launched: {error}"))?;
-        let duration_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
-        let result = observed_result(&status)?;
+    let (status, duration_ms) = run_observed_command(loaded, &policy.command, timeout_ms)?;
+    let result = observed_result(&status)?;
 
+    with_lock(&path, || {
+        crate::git_preflight::refuse_tracked_targets(&loaded.state_root, &targets)?;
         let (_, current_events, current_source) = load_at(loaded, &path)?;
         let current_state = run_state::reduce(&current_events)?;
         if claim_path(&path).exists() {
@@ -433,6 +440,131 @@ pub fn observe_check(loaded: &Loaded, ledger: &str, target: &str) -> Result<Valu
     })
 }
 
+fn run_observed_command(
+    loaded: &Loaded,
+    command_text: &str,
+    timeout_ms: u64,
+) -> Result<(ExitStatus, u64), String> {
+    #[cfg(not(unix))]
+    {
+        let _ = (loaded, command_text, timeout_ms);
+        return Err("observe-check requires a POSIX host".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+
+        let child_stderr = child_stderr_stdio()?;
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg(command_text)
+            .arg("soulmate-observe-check")
+            .current_dir(&loaded.product_root)
+            .stdout(child_stderr)
+            .stderr(Stdio::inherit())
+            .process_group(0);
+        let started = Instant::now();
+        let mut child = command
+            .spawn()
+            .map_err(|error| format!("check command could not be launched: {error}"))?;
+        let timeout = Duration::from_millis(timeout_ms);
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => return Ok((status, elapsed_ms(started))),
+                Ok(None) if started.elapsed() >= timeout => {
+                    let cleanup = terminate_process_group(&mut child);
+                    return Err(match cleanup {
+                        Ok(()) => format!(
+                            "check observation timed out after {timeout_ms} ms; no mutation was made"
+                        ),
+                        Err(cleanup) => format!(
+                            "check observation timed out after {timeout_ms} ms; cleanup failed: {cleanup}; no mutation was made"
+                        ),
+                    });
+                }
+                Ok(None) => {
+                    let remaining = timeout.saturating_sub(started.elapsed());
+                    thread::sleep(remaining.min(Duration::from_millis(OBSERVE_POLL_MS)));
+                }
+                Err(error) => {
+                    let cleanup = terminate_process_group(&mut child);
+                    return Err(match cleanup {
+                        Ok(()) => format!(
+                            "check command could not be observed: {error}; no mutation was made"
+                        ),
+                        Err(cleanup) => format!(
+                            "check command could not be observed: {error}; cleanup failed: {cleanup}; no mutation was made"
+                        ),
+                    });
+                }
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+fn terminate_process_group(child: &mut Child) -> Result<(), String> {
+    let process_group = i32::try_from(child.id())
+        .map_err(|_| "check process identifier is outside the POSIX range".to_owned())?;
+    signal_process_group(process_group, libc::SIGTERM)?;
+    let grace_started = Instant::now();
+    let grace = Duration::from_millis(OBSERVE_TERMINATION_GRACE_MS);
+    while process_group_exists(process_group)? && grace_started.elapsed() < grace {
+        let _ = child.try_wait();
+        thread::sleep(Duration::from_millis(OBSERVE_POLL_MS));
+    }
+    if process_group_exists(process_group)? {
+        signal_process_group(process_group, libc::SIGKILL)?;
+    }
+    child
+        .wait()
+        .map_err(|error| format!("check process could not be reaped: {error}"))?;
+
+    let cleanup_started = Instant::now();
+    while process_group_exists(process_group)? && cleanup_started.elapsed() < grace {
+        thread::sleep(Duration::from_millis(OBSERVE_POLL_MS));
+    }
+    if process_group_exists(process_group)? {
+        return Err("check process group remained after forced termination".into());
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn signal_process_group(process_group: i32, signal: i32) -> Result<(), String> {
+    if unsafe { libc::kill(-process_group, signal) } == 0 {
+        return Ok(());
+    }
+    let error = io::Error::last_os_error();
+    if error.raw_os_error() == Some(libc::ESRCH) {
+        Ok(())
+    } else {
+        Err(format!(
+            "check process group could not be terminated: {error}"
+        ))
+    }
+}
+
+#[cfg(unix)]
+fn process_group_exists(process_group: i32) -> Result<bool, String> {
+    if unsafe { libc::kill(-process_group, 0) } == 0 {
+        return Ok(true);
+    }
+    let error = io::Error::last_os_error();
+    match error.raw_os_error() {
+        Some(libc::ESRCH) => Ok(false),
+        Some(libc::EPERM) => Ok(true),
+        _ => Err(format!(
+            "check process group could not be inspected: {error}"
+        )),
+    }
+}
+
+fn elapsed_ms(started: Instant) -> u64 {
+    started.elapsed().as_millis().min(u64::MAX as u128) as u64
+}
+
 fn observed_result(status: &std::process::ExitStatus) -> Result<Value, String> {
     #[cfg(unix)]
     {
@@ -473,6 +605,15 @@ fn parse_nonnegative(option: &str, value: &str) -> Result<u64, String> {
     value
         .parse::<u64>()
         .map_err(|_| format!("{option} must be a non-negative integer"))
+}
+
+fn parse_positive(option: &str, value: &str) -> Result<u64, String> {
+    let parsed = parse_nonnegative(option, value)
+        .map_err(|_| format!("{option} must be a positive integer"))?;
+    if parsed == 0 {
+        return Err(format!("{option} must be a positive integer"));
+    }
+    Ok(parsed)
 }
 
 pub fn inspect(loaded: &Loaded, ledger: &str) -> Result<Value, String> {
