@@ -505,30 +505,100 @@ fn run_observed_command(
 
 #[cfg(unix)]
 fn terminate_process_group(child: &mut Child) -> Result<(), String> {
-    let process_group = i32::try_from(child.id())
-        .map_err(|_| "check process identifier is outside the POSIX range".to_owned())?;
-    signal_process_group(process_group, libc::SIGTERM)?;
-    let grace_started = Instant::now();
-    let grace = Duration::from_millis(OBSERVE_TERMINATION_GRACE_MS);
-    while process_group_exists(process_group)? && grace_started.elapsed() < grace {
-        let _ = child.try_wait();
-        thread::sleep(Duration::from_millis(OBSERVE_POLL_MS));
+    let process_group = match i32::try_from(child.id()) {
+        Ok(process_group) => Some(process_group),
+        Err(_) => None,
+    };
+    let mut failures = Vec::new();
+    if process_group.is_none() {
+        failures.push("check process identifier is outside the POSIX range".to_owned());
     }
-    if process_group_exists(process_group)? {
-        signal_process_group(process_group, libc::SIGKILL)?;
+    if let Some(process_group) = process_group {
+        if let Err(error) = signal_process_group(process_group, libc::SIGTERM) {
+            failures.push(format!("TERM cleanup failed: {error}"));
+        }
     }
-    child
-        .wait()
-        .map_err(|error| format!("check process could not be reaped: {error}"))?;
 
     let cleanup_started = Instant::now();
-    while process_group_exists(process_group)? && cleanup_started.elapsed() < grace {
-        thread::sleep(Duration::from_millis(OBSERVE_POLL_MS));
+    let grace_started = Instant::now();
+    let grace = Duration::from_millis(OBSERVE_TERMINATION_GRACE_MS);
+    let cleanup_deadline = cleanup_started + grace.saturating_add(grace);
+    let mut group_present = process_group.is_some();
+    let mut leader_reaped = false;
+    while grace_started.elapsed() < grace && Instant::now() < cleanup_deadline {
+        match child.try_wait() {
+            Ok(Some(_)) => leader_reaped = true,
+            Ok(None) => {}
+            Err(error) => failures.push(format!("check process could not be inspected: {error}")),
+        }
+        if let Some(process_group) = process_group {
+            match process_group_exists(process_group) {
+                Ok(false) => {
+                    group_present = false;
+                    break;
+                }
+                Ok(true) => {}
+                Err(error) => failures.push(error),
+            }
+        }
+        let remaining = grace.saturating_sub(grace_started.elapsed());
+        if !remaining.is_zero() {
+            thread::sleep(remaining.min(Duration::from_millis(OBSERVE_POLL_MS)));
+        }
     }
-    if process_group_exists(process_group)? {
-        return Err("check process group remained after forced termination".into());
+    if group_present {
+        if let Some(process_group) = process_group {
+            if let Err(error) = signal_process_group(process_group, libc::SIGKILL) {
+                failures.push(format!("KILL cleanup failed: {error}"));
+            }
+        }
     }
-    Ok(())
+
+    while !leader_reaped && Instant::now() < cleanup_deadline {
+        match child.try_wait() {
+            Ok(Some(_)) => leader_reaped = true,
+            Ok(None) => {}
+            Err(error) => {
+                failures.push(format!("check process could not be reaped: {error}"));
+                break;
+            }
+        }
+        let remaining = cleanup_deadline.saturating_duration_since(Instant::now());
+        if !remaining.is_zero() {
+            thread::sleep(remaining.min(Duration::from_millis(OBSERVE_POLL_MS)));
+        }
+    }
+    if !leader_reaped {
+        failures.push("check process could not be reaped before cleanup deadline".to_owned());
+    }
+
+    while group_present && Instant::now() < cleanup_deadline {
+        if let Some(process_group) = process_group {
+            match process_group_exists(process_group) {
+                Ok(false) => group_present = false,
+                Ok(true) => {}
+                Err(error) => failures.push(error),
+            }
+        } else {
+            break;
+        }
+        if group_present {
+            let remaining = cleanup_deadline.saturating_duration_since(Instant::now());
+            if !remaining.is_zero() {
+                thread::sleep(remaining.min(Duration::from_millis(OBSERVE_POLL_MS)));
+            }
+        }
+    }
+    if group_present {
+        failures.push("check process group remained after forced termination".into());
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        failures.sort();
+        failures.dedup();
+        Err(failures.join("; "))
+    }
 }
 
 #[cfg(unix)]
@@ -558,6 +628,66 @@ fn process_group_exists(process_group: i32) -> Result<bool, String> {
         _ => Err(format!(
             "check process group could not be inspected: {error}"
         )),
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::{
+        process_group_exists, terminate_process_group, Duration, Instant,
+        OBSERVE_TERMINATION_GRACE_MS,
+    };
+    use std::os::unix::process::CommandExt;
+    use std::process::Command;
+    use std::{fs, thread};
+
+    #[test]
+    fn cleanup_reports_reap_failure_after_still_killing_the_group() {
+        let marker =
+            std::env::temp_dir().join(format!("soulmate-cleanup-{}.ready", std::process::id()));
+        let _ = fs::remove_file(&marker);
+        let command = format!(
+            "sh -c 'trap : TERM HUP; echo ready > {}; while :; do :; done' & exit 0",
+            marker.display()
+        );
+        let mut child = Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .process_group(0)
+            .spawn()
+            .expect("cleanup fixture should launch");
+        let child_pid = i32::try_from(child.id()).expect("fixture pid should fit POSIX");
+        let ready_started = Instant::now();
+        while !marker.exists() && ready_started.elapsed() < Duration::from_secs(1) {
+            thread::sleep(Duration::from_millis(1));
+        }
+        let waited = unsafe { libc::waitpid(child_pid, std::ptr::null_mut(), 0) };
+        let group_before = process_group_exists(child_pid).unwrap_or(false);
+
+        let started = Instant::now();
+        let failure = terminate_process_group(&mut child).expect_err("external reap is an error");
+        let group_after = process_group_exists(child_pid);
+        let ready = marker.exists();
+        let _ = fs::remove_file(marker);
+        assert_eq!(waited, child_pid);
+        assert!(ready, "cleanup fixture did not become ready");
+        assert!(
+            group_before,
+            "cleanup fixture process group was not present"
+        );
+        assert!(
+            matches!(group_after, Ok(false)),
+            "cleanup left the process group behind: {group_after:?}"
+        );
+        assert!(
+            started.elapsed() >= Duration::from_millis(OBSERVE_TERMINATION_GRACE_MS),
+            "cleanup skipped its bounded TERM grace"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "cleanup exceeded its bounded budget"
+        );
+        assert!(failure.contains("could not be reaped"), "{failure}");
     }
 }
 

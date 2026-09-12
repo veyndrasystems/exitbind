@@ -111,35 +111,52 @@ fn print_checks(
                     check_state(*state),
                     optional(origin.as_deref(), "unknown")
                 );
-            } else if *state == HumanCheckState::NotObserved {
-                println!(
-                    "Host-reported check: not observed; not executed by Soulmate; local observe-check is available; origin={}",
-                    optional(origin.as_deref(), "unknown")
-                );
-            } else if targets
-                .iter()
-                .all(|target| target.acquisition.as_deref() == Some("reported"))
-            {
-                println!(
-                    "Host-reported check: {}; not executed by Soulmate; acquisition is shown per target; origin={}",
-                    check_state(*state),
-                    optional(origin.as_deref(), "unknown")
-                );
-            } else if targets
-                .iter()
-                .all(|target| target.acquisition.as_deref() == Some("observed"))
-            {
-                println!(
-                    "Locally observed check: {}; acquisition is shown per target; origin={}",
-                    check_state(*state),
-                    optional(origin.as_deref(), "unknown")
-                );
             } else {
-                println!(
-                    "Configured check: {} (mixed acquisition; see targets); origin={}",
-                    check_state(*state),
-                    optional(origin.as_deref(), "unknown")
-                );
+                let acquisitions: Vec<_> = targets
+                    .iter()
+                    .filter_map(|target| target.acquisition.as_deref())
+                    .collect();
+                if acquisitions.first().is_some()
+                    && acquisitions
+                        .iter()
+                        .all(|acquisition| *acquisition == "reported")
+                {
+                    println!(
+                        "Host-reported check: {}; not executed by Soulmate; acquisition is shown per target{}; origin={}",
+                        check_state(*state),
+                        missing_observe_guidance(*state),
+                        optional(origin.as_deref(), "unknown")
+                    );
+                } else if acquisitions.first().is_some()
+                    && acquisitions
+                        .iter()
+                        .all(|acquisition| *acquisition == "observed")
+                {
+                    println!(
+                        "Locally observed check: {}; acquisition is shown per target{}; origin={}",
+                        check_state(*state),
+                        missing_observe_guidance(*state),
+                        optional(origin.as_deref(), "unknown")
+                    );
+                } else if acquisitions.first().is_some() {
+                    println!(
+                        "Configured check: {} (mixed acquisition; see targets){}; origin={}",
+                        check_state(*state),
+                        missing_observe_guidance(*state),
+                        optional(origin.as_deref(), "unknown")
+                    );
+                } else if *state == HumanCheckState::NotObserved {
+                    println!(
+                        "Host-reported check: not observed; not executed by Soulmate; local observe-check is available; origin={}",
+                        optional(origin.as_deref(), "unknown")
+                    );
+                } else {
+                    println!(
+                        "Configured check: {} (mixed acquisition; see targets); origin={}",
+                        check_state(*state),
+                        optional(origin.as_deref(), "unknown")
+                    );
+                }
             }
             println!(
                 "  Frozen command: {}",
@@ -330,6 +347,14 @@ fn check_state(state: HumanCheckState) -> &'static str {
         HumanCheckState::NotObserved => "not observed",
         HumanCheckState::Blocked => "blocked",
         HumanCheckState::Passed => "passed",
+    }
+}
+
+fn missing_observe_guidance(state: HumanCheckState) -> &'static str {
+    if state == HumanCheckState::NotObserved {
+        "; local observe-check is available"
+    } else {
+        ""
     }
 }
 

@@ -573,6 +573,43 @@ fn human_status_distinguishes_reported_observed_and_mixed_acquisition() {
         &root,
         &[
             "run",
+            "observe-check",
+            ledger,
+            "--target",
+            &targets[1],
+            "--config",
+            "soulmate.json",
+        ],
+    );
+    let observed_with_missing = call(
+        &root,
+        &["run", "status", ledger, "--config", "soulmate.json"],
+    );
+    let observed_with_missing = text(&observed_with_missing);
+    assert!(observed_with_missing.contains("Locally observed check: not observed"));
+    assert!(observed_with_missing.contains("local observe-check is available"));
+    assert!(observed_with_missing.contains("acquisition=observed"));
+    assert!(observed_with_missing.contains("reported exit=missing"));
+
+    let explained_with_missing = call(
+        &root,
+        &["run", "explain", ledger, "--config", "soulmate.json"],
+    );
+    assert!(
+        explained_with_missing.status.success(),
+        "{}",
+        text(&explained_with_missing)
+    );
+    let explained_with_missing = text(&explained_with_missing);
+    assert!(explained_with_missing.contains("Locally observed check: not observed"));
+    assert!(explained_with_missing.contains("local observe-check is available"));
+    assert!(explained_with_missing.contains("acquisition=observed"));
+    assert!(explained_with_missing.contains("reported exit=missing"));
+
+    run(
+        &root,
+        &[
+            "run",
             "record-check",
             ledger,
             "--target",
@@ -581,18 +618,6 @@ fn human_status_distinguishes_reported_observed_and_mixed_acquisition() {
             "exit 0",
             "--exit-code",
             "0",
-            "--config",
-            "soulmate.json",
-        ],
-    );
-    run(
-        &root,
-        &[
-            "run",
-            "observe-check",
-            ledger,
-            "--target",
-            &targets[1],
             "--config",
             "soulmate.json",
         ],
