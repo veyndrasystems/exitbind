@@ -16,7 +16,7 @@ Install the supported release as a single Rust binary. Node.js, npm, Python,
 and Cargo are not required after installation:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.15.0-rc.3/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.15.0-rc.4/install.sh | sh
 soulmate init --mode portable
 soulmate brief worker --task "Describe the change you want to make" --config soulmate.json
 soulmate run start change --goal "Describe the bounded change" --check-command "YOUR_TEST_COMMAND" --ledger .soulmate/runs/run.jsonl --config soulmate.json
@@ -30,7 +30,7 @@ The pinned preview includes the `--event-id`/`--text` forms below. Older
 0.12.0 binaries retain the JSON workflow but do not recognize these flags.
 A skill refresh alone does not upgrade the binary.
 
-The v0.15.0-rc.3 candidate targets Linux x86_64 and native macOS on Apple
+The v0.15.0-rc.4 candidate targets Linux x86_64 and native macOS on Apple
 Silicon and Intel. Windows uses the Linux artifact through Ubuntu on WSL 2,
 with the agent, Soulmate, and project inside that distribution. The
 [platform matrix](docs/platform-support.md) names the native build and
@@ -166,7 +166,7 @@ soulmate run record-check .soulmate/runs/checked.jsonl \
 soulmate run status .soulmate/runs/checked.jsonl --config soulmate.json
 ```
 
-New checked runs in the `v0.15.0-rc.3` preview use run-event format 4. The
+New checked runs in the `v0.15.0-rc.4` preview use run-event format 4. The
 preview supports both v3 caller-reported ledgers and v4 `observe-check`.
 After the worker submission, the
 frozen command can instead be run and recorded by Soulmate without accepting a
@@ -250,7 +250,7 @@ files carrying Soulmate's ownership marker; unowned or conflicting files cause
 the command to refuse the update:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.15.0-rc.3/install.sh | SOULMATE_VERSION=v0.15.0-rc.3 sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.15.0-rc.4/install.sh | SOULMATE_VERSION=v0.15.0-rc.4 sh
 soulmate init --refresh-skills --root PATH
 ```
 
@@ -279,7 +279,7 @@ never installs software, and SubagentStart does not receive it; model surfacing
 is advisory and not proven by the hook. Stable builds consider stable releases;
 prerelease builds may consider stable and prerelease releases. Run
 `soulmate update` explicitly to install a validated release. Versions released
-before this feature cannot self-notify, so install `0.15.0-rc.3` once to enable
+before this feature cannot self-notify, so install `0.15.0-rc.4` once to enable
 future notices when the integration is active. A first SessionStart may then
 perform the bounded lookup; later starts use the cache.
 
@@ -617,14 +617,14 @@ must be declared separately when you manage their projections with dotagents.
 For an existing project with `agents.toml`:
 
 ```text
-dotagents --project add veyndrasystems/soulmate --ref v0.15.0-rc.3
+dotagents --project add veyndrasystems/soulmate --ref v0.15.0-rc.4
 ```
 
 For a new dotagents-managed project:
 
 ```text
 dotagents --project init
-dotagents --project add veyndrasystems/soulmate --ref v0.15.0-rc.3
+dotagents --project add veyndrasystems/soulmate --ref v0.15.0-rc.4
 ```
 
 During `dotagents --project init`, select the hosts you use. `dotagents add`
@@ -752,7 +752,7 @@ ControlRoot and pass it only when creating an existing brief or plan receipt:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.15.0-rc.3/schema/harness-manifest.schema.json",
+  "$schema": "https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.15.0-rc.4/schema/harness-manifest.schema.json",
   "version": 1,
   "project": { "id": "my-project", "session": "codex-2026-08-30" },
   "harness": { "name": "my-harness", "version": "2026.08.30" },

@@ -124,7 +124,7 @@ participants provide those observations.
 ## Compatibility and broader claims
 
 Historical checked runs use run-event version 3 and are reported-only;
-the `v0.15.0-rc.3` preview adds v4 observed-or-reported results. Existing v1/v2 ledgers keep their previous
+the `v0.15.0-rc.4` preview adds v4 observed-or-reported results. Existing v1/v2 ledgers keep their previous
 format and remain inspectable. Old binaries do not gain v3 support by
 changing the package number; retain a compatible binary for v3 evidence and do
 not rewrite a v3 ledger as an older format. Public schema snapshots and frozen

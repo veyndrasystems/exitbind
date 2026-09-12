@@ -34,7 +34,7 @@ ones Soulmate tests.
 ```sh
 sudo apt-get update
 sudo apt-get install -y curl git tmux
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.15.0-rc.3/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.15.0-rc.4/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 
 mkdir -p "$HOME/projects"

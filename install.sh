@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 repo="${SOULMATE_REPOSITORY:-veyndrasystems/soulmate}"
-version="${SOULMATE_VERSION:-v0.15.0-rc.3}"
+version="${SOULMATE_VERSION:-v0.15.0-rc.4}"
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 arch=$(uname -m)
 case "$os:$arch" in

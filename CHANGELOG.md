@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.0-rc.4
+
+- Make bridge assumptions explicit in Reality claims guidance: keep endpoint
+  facts distinct, test the connecting edge, and bind evidence to its target.
+
 ## 0.15.0-rc.3
 
 - Bound local `run observe-check` execution with a configurable timeout, run it

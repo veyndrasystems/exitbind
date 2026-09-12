@@ -64,6 +64,14 @@ that an action did not happen. Insufficient evidence is not product validation
 or universal failure. Use an independent verifier only when it can materially
 change the decision and the host can invoke it.
 
+When independently supported endpoint facts must compose, name the minimum
+bridge assumption instead of collapsing them into an end-to-end claim. Classify
+only its material identity, freshness, scope, authority, representation,
+ordering, or location dimension, then test that connecting edge directly. Bind
+the probe to the exact target, host/session/service, time, version/state, and
+claim; endpoint presence or success does not prove the next link. Preserve the
+endpoint facts, bridge status, limitation, and smallest next action separately.
+
 ## Decision closure
 
 For a material finding, preserve the criticism while separating its

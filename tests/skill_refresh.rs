@@ -294,6 +294,10 @@ fn reality_and_decision_guidance_is_embedded_and_distributed() {
     let normalize = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
     let required = [
         "authored source -> projection -> discovery -> invocation -> effective instructions/permissions -> behavior -> outcome",
+        "independently supported endpoint facts",
+        "minimum bridge assumption",
+        "test that connecting edge directly",
+        "endpoint presence or success does not prove the next link",
         "verified within scope",
         "failed",
         "unverified",
@@ -368,6 +372,9 @@ fn reality_and_decision_guidance_is_embedded_and_distributed() {
                 pair
             );
         }
+    }
+    for projection in projections {
+        assert_eq!(fs::read(projection).unwrap(), SOULMATE_SKILL);
     }
     fs::remove_dir_all(base).unwrap();
 }
