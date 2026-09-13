@@ -97,7 +97,9 @@ pub fn start_with_policy(
         } else {
             None
         };
-        let version = if check_policy.is_some() {
+        let version = if crate::producer::exitbind_surface() {
+            5
+        } else if check_policy.is_some() {
             4
         } else if reference.is_some() {
             2
@@ -107,7 +109,7 @@ pub fn start_with_policy(
         let mut value = json!({
             "version": version,
             "kind": "run",
-            "producer": crate::producer::evidence(),
+            "producer": crate::producer::evidence_for_version(version),
             "action": "start",
             "runId": run_id,
             "workflow": workflow,
@@ -122,6 +124,9 @@ pub fn start_with_policy(
         }
         if let Some(policy) = &check_policy {
             value["checkPolicy"] = policy.value();
+        }
+        if version == 5 {
+            value["subject"] = subject(goal, &value["plan"], &config_sha, &run_id);
         }
         let event = run_state::make_event(value);
         append(&path, &event, true, "")?;
@@ -144,6 +149,7 @@ pub fn next(loaded: &Loaded, ledger: &str) -> Result<Value, String> {
         "currentStage": if state["status"] == "running" { state["currentStage"].clone() } else { Value::Null },
         "attempt": if state["status"] == "running" { state["attempt"].clone() } else { Value::Null },
         "assignments": crate::run_assignment::pending(&state)
+        ,"progress": crate::run_value::exit_progress(&state)
     }))
 }
 
@@ -307,10 +313,10 @@ where
                 );
             }
         }
-        let event = run_state::make_event(json!({
+        let mut event_value = json!({
             "version": version,
             "kind": "run",
-            "producer": crate::producer::evidence(),
+            "producer": crate::producer::evidence_for_version(version),
             "action": "submit",
             "runId": state["runId"],
             "stage": assignment["stage"],
@@ -321,7 +327,18 @@ where
             "artifact": artifact_value,
             "previousEventSha256": last["eventSha256"],
             "timestamp": nondecreasing(&last["timestamp"])?
-        }));
+        });
+        if version == 5 {
+            event_value["subjectSha256"] =
+                if assignment["role"] == "worker" && outcome == "completed" {
+                    crate::run_state::subject_for_submission(&state, &assignment, &artifact_value)
+                        ["sha256"]
+                        .clone()
+                } else {
+                    state["subject"]["sha256"].clone()
+                };
+        }
+        let event = run_state::make_event(event_value);
         let mut all = events;
         all.push(event.clone());
         let next_state = run_state::reduce(&all)?;
@@ -385,11 +402,11 @@ pub fn record_check(
         crate::run_value::validate_check_target(&state, target)?;
         let last = events.last().ok_or("run ledger has no event head")?;
         let version = state["version"].as_u64().unwrap_or(3);
-        let mut value = if version == 4 {
+        let mut value = if version >= 4 {
             json!({
-            "version": 4,
+            "version": version,
             "kind": "run",
-            "producer": crate::producer::evidence(),
+            "producer": crate::producer::evidence_for_version(version),
             "action": "check",
             "runId": state["runId"],
             "targetEventSha256": target,
@@ -405,7 +422,7 @@ pub fn record_check(
             json!({
                 "version": 3,
                 "kind": "run",
-                "producer": crate::producer::evidence(),
+                "producer": crate::producer::evidence_for_version(3),
                 "action": "check",
                 "runId": state["runId"],
                 "targetEventSha256": target,
@@ -417,6 +434,9 @@ pub fn record_check(
                 "timestamp": nondecreasing(&last["timestamp"])?
             })
         };
+        if version == 5 {
+            value["subjectSha256"] = state["subject"]["sha256"].clone();
+        }
         value["durationMs"] = duration_ms.map_or(Value::Null, |duration| json!(duration));
         let event = run_state::make_event(value);
         let mut all = events.clone();
@@ -456,8 +476,8 @@ pub fn observe_check(
         }
         let (_, events, source) = load_at(loaded, &path)?;
         let state = run_state::reduce(&events)?;
-        if state["version"] != 4 {
-            return Err("observe-check requires a newly created v4 checked run".into());
+        if state["version"].as_u64().unwrap_or(0) < 4 {
+            return Err("observe-check requires a newly created checked run".into());
         }
         if state["status"] != "running" {
             return Err("run has already reached a terminal state; no mutation was made".into());
@@ -487,7 +507,9 @@ pub fn observe_check(
         if current_source != source {
             return Err("run ledger changed while observing; no mutation was made".into());
         }
-        if current_state["version"] != 4 || current_state["status"] != "running" {
+        if current_state["version"].as_u64().unwrap_or(0) < 4
+            || current_state["status"] != "running"
+        {
             return Err("run changed while observing; no mutation was made".into());
         }
         assert_no_drift(loaded, &current_state)?;
@@ -507,10 +529,10 @@ pub fn observe_check(
         let last = current_events
             .last()
             .ok_or("run ledger has no event head")?;
-        let event = run_state::make_event(json!({
-            "version": 4,
+        let mut event_value = json!({
+            "version": current_state["version"],
             "kind": "run",
-            "producer": crate::producer::evidence(),
+            "producer": crate::producer::evidence_for_version(current_state["version"].as_u64().unwrap_or(4)),
             "action": "check",
             "runId": current_state["runId"],
             "targetEventSha256": target,
@@ -522,7 +544,11 @@ pub fn observe_check(
             "durationMs": duration_ms,
             "previousEventSha256": last["eventSha256"],
             "timestamp": nondecreasing(&last["timestamp"])?
-        }));
+        });
+        if current_state["version"] == 5 {
+            event_value["subjectSha256"] = current_state["subject"]["sha256"].clone();
+        }
+        let event = run_state::make_event(event_value);
         let mut all = current_events;
         all.push(event.clone());
         let next_state = run_state::reduce(&all)?;
@@ -1071,7 +1097,9 @@ pub fn supersede_with_policy(
             "headEventSha256": claim.value["oldHeadEventSha256"],
             "configSha256": claim.value["oldConfigSha256"]
         });
-        let version = if check_policy.is_some() {
+        let version = if crate::producer::exitbind_surface() {
+            5
+        } else if check_policy.is_some() {
             4
         } else if harness_reference.is_some() {
             2
@@ -1081,7 +1109,7 @@ pub fn supersede_with_policy(
         let mut event_value = json!({
             "version": version,
             "kind": "run",
-            "producer": crate::producer::evidence(),
+            "producer": crate::producer::evidence_for_version(version),
             "action": "start",
             "runId": claim.value["newRunId"],
             "workflow": workflow,
@@ -1097,6 +1125,9 @@ pub fn supersede_with_policy(
         }
         if let Some(policy) = &check_policy {
             event_value["checkPolicy"] = policy.value();
+        }
+        if version == 5 {
+            event_value["subject"] = subject(goal, &event_value["plan"], &config_sha, &run_id);
         }
         let event = run_state::make_event(event_value);
         let successor = if new.path.exists() {
@@ -1125,7 +1156,28 @@ fn result(events: &[Value]) -> Result<Value, String> {
         "currentStage": state["currentStage"],
         "attempt": state["attempt"],
         "assignments": crate::run_assignment::pending(&state)
+        ,"progress": crate::run_value::exit_progress(&state)
     }))
+}
+
+fn subject(goal: &str, plan: &Value, config_sha: &str, run_id: &str) -> Value {
+    let goal_sha = hash::text(goal);
+    let plan_sha = hash::value(plan);
+    let basis = json!({
+        "version": 1,
+        "runId": run_id,
+        "goalSha256": goal_sha,
+        "planSha256": plan_sha,
+        "configSha256": config_sha,
+        "attempt": 0,
+        "previousSubjectSha256": Value::Null,
+        "workerArtifactSha256": Value::Null,
+        "transitionSha256": Value::Null,
+    });
+    let sha = hash::value(&basis);
+    let mut value = basis;
+    value["sha256"] = json!(sha);
+    value
 }
 
 fn has_worker_stage(plan: &Value) -> bool {
@@ -1223,6 +1275,11 @@ fn assert_no_drift(loaded: &Loaded, state: &Value) -> Result<(), String> {
         crate::receipt::assert_current(loaded, reference, &state["plan"])?;
     }
     Ok(())
+}
+
+pub(crate) fn assert_current_for_receipt(loaded: &Loaded, state: &Value) -> Result<(), String> {
+    assert_no_drift(loaded, state)?;
+    crate::run_artifact::assert_current(loaded, state)
 }
 
 fn nondecreasing(previous: &Value) -> Result<String, String> {

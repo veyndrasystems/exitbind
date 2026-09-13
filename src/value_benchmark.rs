@@ -22,14 +22,53 @@ use std::os::unix::fs::PermissionsExt;
 
 const SCENARIO_ID: &str = "false-completion-v1";
 const SCENARIO_ORIGIN: &str = "synthetic";
-const CHECK_COMMAND: &str = "soulmate check --config verification.json";
-const CLAIM: &str = "In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.";
+const SOULMATE_CHECK_COMMAND: &str = "soulmate check --config verification.json";
+const EXITBIND_CHECK_COMMAND: &str = "exitbind check --config verification.json";
+const SOULMATE_CLAIM: &str = "In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.";
+const EXITBIND_CLAIM: &str = "In checked runs, Exitbind refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.";
 const EXPECTED_JSON: &str = include_str!("../proof/scenarios/false-completion-v1/expected.json");
 const RUN_EVENT_V3_SCHEMA: &str = include_str!("../schema/run-event-v3.schema.json");
 const RUN_EVENT_V4_SCHEMA: &str = include_str!("../schema/run-event-v4.schema.json");
+const RUN_EVENT_V5_SCHEMA: &str = include_str!("../schema/run-event-v5.schema.json");
 const VALUE_REPORT_V1_SCHEMA: &str = include_str!("../schema/value-report-v1.schema.json");
 const VALUE_PROOF_V1_SCHEMA: &str = include_str!("../schema/value-proof-v1.schema.json");
 const SCENARIO_README: &str = include_str!("../proof/scenarios/false-completion-v1/README.md");
+
+fn exitbind_surface() -> bool {
+    crate::producer::exitbind_surface()
+}
+
+fn config_name() -> &'static str {
+    if exitbind_surface() {
+        "exitbind.json"
+    } else {
+        "soulmate.json"
+    }
+}
+
+fn state_namespace() -> &'static str {
+    if exitbind_surface() {
+        ".exitbind"
+    } else {
+        ".soulmate"
+    }
+}
+
+fn check_command() -> &'static str {
+    if exitbind_surface() {
+        EXITBIND_CHECK_COMMAND
+    } else {
+        SOULMATE_CHECK_COMMAND
+    }
+}
+
+fn claim() -> &'static str {
+    if exitbind_surface() {
+        EXITBIND_CLAIM
+    } else {
+        SOULMATE_CLAIM
+    }
+}
 
 /// Run the one-command first value-proof scenario.
 pub fn run(output: Option<&str>) -> Result<Value, String> {
@@ -194,7 +233,12 @@ impl TempFixture {
             .as_nanos();
         for attempt in 0..32u32 {
             let candidate = base.join(format!(
-                "soulmate-value-proof-{}-{}-{}",
+                "{}-value-proof-{}-{}-{}",
+                if exitbind_surface() {
+                    "exitbind"
+                } else {
+                    "soulmate"
+                },
                 std::process::id(),
                 seed,
                 attempt
@@ -272,7 +316,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         args(["init", "--root", "."]),
         "portable fixture initialization",
     )?;
-    let config_bytes = read_file(fixture.join("soulmate.json"), "generated fixture config")?;
+    let config_bytes = read_file(fixture.join(config_name()), "generated fixture config")?;
     let verification_invalid_bytes = b"{\"version\":1}\n".to_vec();
     write_file(
         fixture.join("verification.json"),
@@ -312,10 +356,10 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         args([
             "run",
             "inspect",
-            ".soulmate/runs/legacy.jsonl",
+            &format!("{}/runs/legacy.jsonl", state_namespace()),
             "--json",
             "--config",
-            "soulmate.json",
+            config_name(),
         ]),
         "legacy baseline inspection",
     )?
@@ -324,7 +368,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         return Err("legacy baseline did not reach its ordinary accepted state".into());
     }
 
-    let protected_ledger = ".soulmate/runs/protected.jsonl";
+    let protected_ledger = format!("{}/runs/protected.jsonl", state_namespace());
     expect_success(
         invoker,
         fixture,
@@ -335,18 +379,18 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
             "--goal",
             "synthetic checked completion fixture",
             "--ledger",
-            protected_ledger,
+            protected_ledger.as_str(),
             "--check-command",
-            CHECK_COMMAND,
+            check_command(),
             "--proof-origin",
             SCENARIO_ORIGIN,
             "--config",
-            "soulmate.json",
+            config_name(),
         ]),
-        "protected v3 run start",
+        "protected checked run start",
     )?;
 
-    let lead_one = next_assignment(invoker, fixture, protected_ledger, "protected lead stage")?;
+    let lead_one = next_assignment(invoker, fixture, &protected_ledger, "protected lead stage")?;
     require_assignment(&lead_one, "lead", 1, 1, "protected lead stage")?;
     let lead_one_path = write_state_artifact(
         fixture,
@@ -357,7 +401,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         invoker,
         fixture,
         "lead",
-        protected_ledger,
+        &protected_ledger,
         "scoped",
         &lead_one_path,
         true,
@@ -371,7 +415,12 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         "protected lead submission",
     )?;
 
-    let worker_one = next_assignment(invoker, fixture, protected_ledger, "protected worker stage")?;
+    let worker_one = next_assignment(
+        invoker,
+        fixture,
+        &protected_ledger,
+        "protected worker stage",
+    )?;
     require_assignment(&worker_one, "worker", 2, 1, "protected worker stage")?;
     let worker_one_path = write_state_artifact(
         fixture,
@@ -382,7 +431,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         invoker,
         fixture,
         "worker",
-        protected_ledger,
+        &protected_ledger,
         "completed",
         &worker_one_path,
         true,
@@ -416,7 +465,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
     let protected_check_value = record_check(
         invoker,
         fixture,
-        protected_ledger,
+        &protected_ledger,
         event_sha(&worker_one_event, "worker one submission")?,
         protected_check_exit_code,
     )?;
@@ -426,7 +475,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         protected_check_exit_code,
         "protected failed check record",
     )?;
-    let after_failed_check = inspect(invoker, fixture, protected_ledger, "after failed check")?;
+    let after_failed_check = inspect(invoker, fixture, &protected_ledger, "after failed check")?;
     if after_failed_check["status"] != "running" {
         return Err("failed check changed canonical run status before acceptance".into());
     }
@@ -434,7 +483,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
     let reviewer_one = next_assignment(
         invoker,
         fixture,
-        protected_ledger,
+        &protected_ledger,
         "protected reviewer stage",
     )?;
     require_assignment(&reviewer_one, "reviewer", 3, 1, "protected reviewer stage")?;
@@ -447,7 +496,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         invoker,
         fixture,
         "reviewer",
-        protected_ledger,
+        &protected_ledger,
         "approved",
         &reviewer_one_path,
         true,
@@ -471,7 +520,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         OsString::from("run"),
         OsString::from("submit"),
         OsString::from("lead"),
-        OsString::from(protected_ledger),
+        OsString::from(protected_ledger.as_str()),
         OsString::from("--outcome"),
         OsString::from("accepted"),
         OsString::from("--artifact"),
@@ -480,7 +529,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         OsString::from("state"),
         OsString::from("--json"),
         OsString::from("--config"),
-        OsString::from("soulmate.json"),
+        OsString::from(config_name()),
     ];
     let failed_acceptance = invoker.call(fixture, failed_acceptance_arguments)?;
     let failed_acceptance_exit_code = failed_acceptance.exit_code("failed acceptance")?;
@@ -495,11 +544,11 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         "blocked ledger snapshot",
     )?;
     let blocked_events = parse_ledger(&blocked_ledger, "blocked protected run")?;
-    let blocked_view = inspect(invoker, fixture, protected_ledger, "blocked protected run")?;
+    let blocked_view = inspect(invoker, fixture, &protected_ledger, "blocked protected run")?;
     let blocked_assignment = next_assignment(
         invoker,
         fixture,
-        protected_ledger,
+        &protected_ledger,
         "blocked protected lead stage",
     )?;
     let blocked_protection_count = protection_count(&blocked_events);
@@ -522,7 +571,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         ));
     }
 
-    let lead_rework = next_assignment(invoker, fixture, protected_ledger, "lead rework stage")?;
+    let lead_rework = next_assignment(invoker, fixture, &protected_ledger, "lead rework stage")?;
     require_assignment(&lead_rework, "lead", 4, 1, "lead rework stage")?;
     let lead_rework_path = write_state_artifact(
         fixture,
@@ -533,7 +582,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         invoker,
         fixture,
         "lead",
-        protected_ledger,
+        &protected_ledger,
         "rework",
         &lead_rework_path,
         true,
@@ -544,7 +593,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
     let worker_two = next_assignment(
         invoker,
         fixture,
-        protected_ledger,
+        &protected_ledger,
         "protected worker attempt two",
     )?;
     require_assignment(&worker_two, "worker", 2, 2, "protected worker attempt two")?;
@@ -557,7 +606,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         invoker,
         fixture,
         "worker",
-        protected_ledger,
+        &protected_ledger,
         "completed",
         &worker_two_path,
         true,
@@ -599,7 +648,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
     let repaired_check_value = record_check(
         invoker,
         fixture,
-        protected_ledger,
+        &protected_ledger,
         event_sha(&worker_two_event, "worker two submission")?,
         repaired_check_exit_code,
     )?;
@@ -610,7 +659,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         "repaired check record",
     )?;
 
-    let after_passing_check = inspect(invoker, fixture, protected_ledger, "after passing check")?;
+    let after_passing_check = inspect(invoker, fixture, &protected_ledger, "after passing check")?;
     if after_passing_check["status"] != "running"
         || has_canonical_acceptance(&parse_ledger(
             &read_ledger(fixture, "protected.jsonl")?,
@@ -624,7 +673,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
     let reviewer_two = next_assignment(
         invoker,
         fixture,
-        protected_ledger,
+        &protected_ledger,
         "protected reviewer attempt two",
     )?;
     require_assignment(
@@ -643,7 +692,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         invoker,
         fixture,
         "reviewer",
-        protected_ledger,
+        &protected_ledger,
         "approved",
         &reviewer_two_path,
         true,
@@ -657,7 +706,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         2,
         "protected reviewer attempt two",
     )?;
-    let after_review = inspect(invoker, fixture, protected_ledger, "after repaired review")?;
+    let after_review = inspect(invoker, fixture, &protected_ledger, "after repaired review")?;
     if after_review["status"] != "running"
         || has_canonical_acceptance(&parse_ledger(
             &read_ledger(fixture, "protected.jsonl")?,
@@ -677,14 +726,14 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         invoker,
         fixture,
         "lead",
-        protected_ledger,
+        &protected_ledger,
         "accepted",
         &lead_accept_two_path,
         true,
     )?;
     let final_event = event_from_submit(&final_submit, "final lead acceptance")?;
     require_submission_event(&final_event, "lead", "accepted", 2, "final lead acceptance")?;
-    let final_view = inspect(invoker, fixture, protected_ledger, "final protected run")?;
+    let final_view = inspect(invoker, fixture, &protected_ledger, "final protected run")?;
     if final_view["status"] != "accepted" {
         return Err("repaired protected run did not reach final lead acceptance".into());
     }
@@ -732,10 +781,10 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         args([
             "run",
             "report",
-            protected_ledger,
+            protected_ledger.as_str(),
             "--json",
             "--config",
-            "soulmate.json",
+            config_name(),
         ]),
         "protected JSON report",
     )?;
@@ -746,9 +795,9 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
         args([
             "run",
             "report",
-            protected_ledger,
+            protected_ledger.as_str(),
             "--config",
-            "soulmate.json",
+            config_name(),
         ]),
         "protected Markdown report",
     )?;
@@ -767,14 +816,29 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
             "legacy-worker.md",
             "legacy-reviewer.md",
             "legacy-accepted.md",
-            ".soulmate/artifacts/protected-lead-scoped.md",
-            ".soulmate/artifacts/protected-worker-attempt-1.md",
-            ".soulmate/artifacts/protected-reviewer-attempt-1.md",
-            ".soulmate/artifacts/protected-lead-accept-attempt-1.md",
-            ".soulmate/artifacts/protected-lead-rework.md",
-            ".soulmate/artifacts/protected-worker-attempt-2.md",
-            ".soulmate/artifacts/protected-reviewer-attempt-2.md",
-            ".soulmate/artifacts/protected-lead-accepted.md",
+            &format!("{}/artifacts/protected-lead-scoped.md", state_namespace()),
+            &format!(
+                "{}/artifacts/protected-worker-attempt-1.md",
+                state_namespace()
+            ),
+            &format!(
+                "{}/artifacts/protected-reviewer-attempt-1.md",
+                state_namespace()
+            ),
+            &format!(
+                "{}/artifacts/protected-lead-accept-attempt-1.md",
+                state_namespace()
+            ),
+            &format!("{}/artifacts/protected-lead-rework.md", state_namespace()),
+            &format!(
+                "{}/artifacts/protected-worker-attempt-2.md",
+                state_namespace()
+            ),
+            &format!(
+                "{}/artifacts/protected-reviewer-attempt-2.md",
+                state_namespace()
+            ),
+            &format!("{}/artifacts/protected-lead-accepted.md", state_namespace()),
         ],
     )?;
 
@@ -801,7 +865,7 @@ fn execute_scenario(invoker: &mut Invoker, fixture: &Path) -> Result<ScenarioEvi
 }
 
 fn run_legacy_baseline(invoker: &mut Invoker, fixture: &Path) -> Result<(), String> {
-    let ledger = ".soulmate/runs/legacy.jsonl";
+    let ledger = format!("{}/runs/legacy.jsonl", state_namespace());
     expect_success(
         invoker,
         fixture,
@@ -812,9 +876,9 @@ fn run_legacy_baseline(invoker: &mut Invoker, fixture: &Path) -> Result<(), Stri
             "--goal",
             "synthetic legacy baseline",
             "--ledger",
-            ledger,
+            ledger.as_str(),
             "--config",
-            "soulmate.json",
+            config_name(),
         ]),
         "legacy baseline run start",
     )?;
@@ -851,10 +915,10 @@ fn run_legacy_baseline(invoker: &mut Invoker, fixture: &Path) -> Result<(), Stri
             ("lead", "accepted") => 4,
             _ => return Err("invalid legacy fixture stage".into()),
         };
-        let assignment = next_assignment(invoker, fixture, ledger, "legacy stage")?;
+        let assignment = next_assignment(invoker, fixture, &ledger, "legacy stage")?;
         require_assignment(&assignment, agent, expected_stage, 1, "legacy stage")?;
         write_file(fixture.join(path), content, "legacy artifact")?;
-        submit(invoker, fixture, agent, ledger, outcome, path, false)?;
+        submit(invoker, fixture, agent, &ledger, outcome, path, false)?;
     }
     Ok(())
 }
@@ -868,7 +932,7 @@ fn next_assignment(
     let output = expect_success(
         invoker,
         fixture,
-        args_with(["run", "next", ledger, "--json", "--config", "soulmate.json"]),
+        args_with(["run", "next", ledger, "--json", "--config", config_name()]),
         label,
     )?;
     let value = output.json(label)?;
@@ -918,7 +982,7 @@ fn submit(
         arguments.push(OsString::from("--artifact-root"));
         arguments.push(OsString::from("state"));
     }
-    arguments.extend([OsString::from("--config"), OsString::from("soulmate.json")]);
+    arguments.extend([OsString::from("--config"), OsString::from(config_name())]);
     expect_success(invoker, fixture, arguments, "run submission")?.json("run submission")
 }
 
@@ -937,12 +1001,12 @@ fn record_check(
         OsString::from("--target"),
         OsString::from(target),
         OsString::from("--check-command"),
-        OsString::from(CHECK_COMMAND),
+        OsString::from(check_command()),
         OsString::from("--exit-code"),
         OsString::from(exit_code.as_str()),
         OsString::from("--json"),
         OsString::from("--config"),
-        OsString::from("soulmate.json"),
+        OsString::from(config_name()),
     ];
     expect_success(invoker, fixture, arguments, "run record-check")?.json("run record-check")
 }
@@ -962,7 +1026,7 @@ fn inspect(
             ledger,
             "--json",
             "--config",
-            "soulmate.json",
+            config_name(),
         ]),
         label,
     )?
@@ -1028,7 +1092,11 @@ fn require_submission_event(
         || event["agent"] != agent
         || event["outcome"] != outcome
         || event["attempt"] != attempt
-        || !matches!(event["version"].as_u64(), Some(3 | 4))
+        || if exitbind_surface() {
+            event["version"] != 5
+        } else {
+            !matches!(event["version"].as_u64(), Some(3 | 4))
+        }
     {
         return Err(format!("{label} returned an unexpected event"));
     }
@@ -1043,7 +1111,7 @@ fn require_check_event(
 ) -> Result<(), String> {
     if event["action"] != "check"
         || event["targetEventSha256"] != target
-        || event["checkCommand"] != CHECK_COMMAND
+        || event["checkCommand"] != check_command()
         || event["origin"] != SCENARIO_ORIGIN
         || event_exit_code(event) != Some(exit_code as u64)
     {
@@ -1186,7 +1254,14 @@ fn build_result(
         "version": 1,
         "scenarioId": SCENARIO_ID,
         "origin": SCENARIO_ORIGIN,
-        "claim": CLAIM,
+        "product": if exitbind_surface() { "Exitbind" } else { "Soulmate" },
+        "producer": if exitbind_surface() { "exitbind" } else { "soulmate" },
+        "formatVersion": if exitbind_surface() { 5 } else { 4 },
+        "layout": {
+            "config": config_name(),
+            "state": state_namespace(),
+        },
+        "claim": claim(),
         "limitations": expected["limitations"],
         "assertions": assertions,
         "expectedResult": expected_result,
@@ -1376,7 +1451,7 @@ fn fixture_artifacts(fixture: &Path, paths: &[&str]) -> Result<Vec<FixtureFile>,
 }
 
 fn write_state_artifact(fixture: &Path, name: &str, bytes: &[u8]) -> Result<String, String> {
-    let relative = format!(".soulmate/artifacts/{name}");
+    let relative = format!("{}/artifacts/{name}", state_namespace());
     write_file(fixture.join(&relative), bytes, "state artifact")?;
     Ok(relative)
 }
@@ -1386,7 +1461,10 @@ fn read_state_artifact(fixture: &Path, relative: &str) -> Result<Vec<u8>, String
 }
 
 fn read_ledger(fixture: &Path, name: &str) -> Result<Vec<u8>, String> {
-    read_file(fixture.join(format!(".soulmate/runs/{name}")), "run ledger")
+    read_file(
+        fixture.join(format!("{}/runs/{name}", state_namespace())),
+        "run ledger",
+    )
 }
 
 fn parse_ledger(bytes: &[u8], label: &str) -> Result<Vec<Value>, String> {
@@ -1592,7 +1670,7 @@ fn export_bundle(
     write_bundle_file(&destination, "ledgers/final.jsonl", &evidence.final_ledger)?;
     write_bundle_file(
         &destination,
-        "fixtures/soulmate.json",
+        &format!("fixtures/{}", config_name()),
         &evidence.config_bytes,
     )?;
     write_bundle_file(
@@ -1615,6 +1693,13 @@ fn export_bundle(
         ("value-proof-v1.schema.json", VALUE_PROOF_V1_SCHEMA),
     ] {
         write_bundle_file(&destination, &format!("schema/{name}"), schema.as_bytes())?;
+    }
+    if exitbind_surface() {
+        write_bundle_file(
+            &destination,
+            "schema/run-event-v5.schema.json",
+            RUN_EVENT_V5_SCHEMA.as_bytes(),
+        )?;
     }
 
     let manifest = hash_manifest(&destination)?;

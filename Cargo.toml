@@ -1,11 +1,21 @@
 [package]
-name = "soulmate"
-version = "0.16.0-rc.1"
+name = "exitbind"
+version = "0.17.0"
 edition = "2021"
 rust-version = "1.75"
-description = "Bounded coding-agent handoffs and memory governance evidence"
+description = "Bounded exact-subject acceptance and evidence binding before exit"
 license = "MIT"
-repository = "https://github.com/veyndrasystems/soulmate"
+repository = "https://github.com/veyndrasystems/exitbind"
+
+autobins = false
+
+[[bin]]
+name = "exitbind"
+path = "src/main.rs"
+
+[[bin]]
+name = "soulmate"
+path = "src/main.rs"
 
 [dependencies]
 # serde/serde_json preserve the public JSON configuration, receipt, and JSONL schemas.

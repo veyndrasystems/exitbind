@@ -1,12 +1,12 @@
-# Contributing to Soulmate
+# Contributing to Exitbind
 
 This guide is for human contributors. If you use a coding agent to modify this
 repository, also give it the repository-specific instructions in
 [AGENTS.md](AGENTS.md).
 
-Keep changes bounded to one explainable problem and preserve Soulmate's core
+Keep changes bounded to one explainable problem and preserve Exitbind's core
 authority boundaries: the host owns models, execution, and permissions; the
-human owns the intended outcome and approvals; and Soulmate records bounded
+human owns the intended outcome and approvals; and Exitbind records bounded
 handoffs and evidence. Discuss a proposed change before implementing it when it
 would alter a public invariant, persisted format, trust boundary, or release
 contract.

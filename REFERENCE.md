@@ -1,14 +1,39 @@
-# Soulmate command and protocol reference
+# Exitbind command and protocol reference
 
 It verifies what you asked an agent to do and what came back, in the same
 record.
 
-Soulmate is a provider-free local protocol for bounded coding-agent handoffs.
+Exitbind — No result exits unbound.
+
+Bind the evidence to the exact result before exit.
+
+For material work, the default update is concise:
+
+```text
+Neuro
+Exitbind progress: N%.
+```
+
+Neuro is an optional narrator, never protocol identity or authority. Exitbind
+owns the weighted progress and terminal decision.
+
+Holytail preservation detail is exceptional: surface it only when requested or
+when a material preservation failure, regression, unresolved invariant, or
+decision-relevant change needs reporting. Exact technical state and refusal
+reasons remain available.
+
+Exitbind is a provider-free local protocol for bounded coding-agent handoffs.
 It records task envelopes, hashes, run transitions, and memory-lifecycle
 evidence. Native hosts such as Codex and Claude Code still own models,
-permissions, execution, and subagents. Soulmate is not an operating system or
-process sandbox; only the optional `soulmate away` convenience launches one
+permissions, execution, and subagents. Exitbind is not an operating system or
+process sandbox; only the optional `exitbind away` convenience launches one
 pending Codex assignment.
+
+New setup uses `exitbind`, `exitbind.json`, `.exitbind/`, and `exitbind/`.
+Existing `soulmate` executable entries, `soulmate.json`, `.soulmate/` state,
+legacy `soulmate/` control trees, and host skill paths remain compatibility
+paths for existing projects. Historical v1–v4 ledgers and their `soulmate`
+producer values remain historical and are never relabeled as Exitbind evidence.
 
 ## Quick start
 
@@ -16,34 +41,34 @@ Install the supported release as a single Rust binary. Node.js, npm, Python,
 and Cargo are not required after installation:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.16.0-rc.1/install.sh | sh
-soulmate init --mode portable
-soulmate brief worker --task "Describe the change you want to make" --config soulmate.json
-soulmate run start change --goal "Describe the bounded change" --check-command "YOUR_TEST_COMMAND" --ledger .soulmate/runs/run.jsonl --config soulmate.json
-soulmate check --config soulmate.json
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/exitbind/v0.17.0/install.sh | sh
+exitbind init --mode portable
+exitbind brief worker --task "Describe the change you want to make" --config exitbind.json
+exitbind run start change --goal "Describe the bounded change" --check-command "YOUR_TEST_COMMAND" --ledger .exitbind/runs/run.jsonl --config exitbind.json
+exitbind check --config exitbind.json
 ```
 
 Replace `YOUR_TEST_COMMAND` with your actual project check. These commands
 prepare the run; the [complete first checked run](docs/first-checked-run.md)
 continues through real result documents, check execution, review, and acceptance.
-The pinned preview includes the `--event-id`/`--text` forms below. Older
+The stable release includes the `--event-id`/`--text` forms below. Older
 0.12.0 binaries retain the JSON workflow but do not recognize these flags.
 A skill refresh alone does not upgrade the binary.
 
-The v0.16.0-rc.1 candidate targets Linux x86_64 and native macOS on Apple
+The v0.17.0 stable release targets Linux x86_64 and native macOS on Apple
 Silicon and Intel. Windows uses the Linux artifact through Ubuntu on WSL 2,
-with the agent, Soulmate, and project inside that distribution. The
+with the agent, Exitbind, and project inside that distribution. The
 [platform matrix](docs/platform-support.md) names the native build and
 installed-path gates; the [Windows guide](docs/windows-wsl.md) explains WSL
 setup. Native Windows and other Linux architectures remain unsupported. The
 installer rejects unsupported platforms before downloading an archive.
 
-That creates `soulmate.json`, canonical profiles and empty public control
-directories under `soulmate/`, and private evidence directories under
-`.soulmate/`. It also copies the bundled skill into
-`.agents/skills/soulmate/SKILL.md` and
-`.claude/skills/soulmate/SKILL.md` as host discovery projections, not as
-Soulmate identity. Downloading a release binary never copies those files or
+That creates `exitbind.json`, canonical profiles and empty public control
+directories under `exitbind/`, and private evidence directories under
+`.exitbind/`. It also copies the bundled skill into
+`.agents/skills/exitbind/SKILL.md` and
+`.claude/skills/exitbind/SKILL.md` as host discovery projections, not as
+Exitbind identity. Downloading a release binary never copies those files or
 changes global host configuration. The default public surface is four command
 families: `init` creates the local contract, `brief` renders an assignment,
 `run` records its resumable handoff, and `check` validates the current
@@ -51,7 +76,7 @@ configuration. The host still performs the returned assignment.
 
 ## Authority boundary
 
-- Soulmate owns task envelopes, selected configuration/profile evidence,
+- Exitbind owns task envelopes, selected configuration/profile evidence,
   run-state events, artifact hashes, and explicit memory-lifecycle evidence.
 - The native host owns provider authentication, model execution, subagent
   spawning, permissions, and enforcement of the declared boundary.
@@ -72,13 +97,13 @@ model. The following is an abbreviated rendering; the profile hash is omitted
 only to keep the example readable:
 
 ```text
-# Soulmate task envelope: worker
+# Exitbind task envelope: worker
 
 Display name: worker
 Native task name: worker
 Purpose: Implement one bounded task without redefining architecture.
 Task: Describe the change you want to make
-Profile: soulmate/agents/worker.md
+Profile: exitbind/agents/worker.md
 Profile SHA-256: ...
 Requested runtime: host=none, model=none, reasoning effort=none, fallback=none
 
@@ -117,13 +142,13 @@ has no check-result requirement; use [checked acceptance](#checked-acceptance)
 when project checks must qualify acceptance:
 
 ```sh
-soulmate run start change --goal "Describe the bounded change you want to make" --ledger .soulmate/runs/run.jsonl --config soulmate.json
-soulmate run next .soulmate/runs/run.jsonl --json --config soulmate.json
+exitbind run start change --goal "Describe the bounded change you want to make" --ledger .exitbind/runs/run.jsonl --config exitbind.json
+exitbind run next .exitbind/runs/run.jsonl --json --config exitbind.json
 # The native host performs the returned assignment and writes its artifact at
 # the returned artifactPathHint, then submits the named assignment:
-soulmate run submit AGENT .soulmate/runs/run.jsonl \
+exitbind run submit AGENT .exitbind/runs/run.jsonl \
   --outcome OUTCOME --artifact ARTIFACT_PATH --artifact-root state \
-  --config soulmate.json
+  --config exitbind.json
 ```
 
 Replace the placeholders with the assignment and role-appropriate outcome.
@@ -132,9 +157,9 @@ assignment (including any rework cycle). Only the configured lead can record
 the final `accepted` outcome; reviewer `approved` is not acceptance:
 
 ```sh
-soulmate run submit lead .soulmate/runs/run.jsonl \
+exitbind run submit lead .exitbind/runs/run.jsonl \
   --outcome accepted --artifact ARTIFACT_PATH --artifact-root state \
-  --config soulmate.json
+  --config exitbind.json
 ```
 
 Submissions are role-scoped evidence, not votes; matching outcomes do not prove
@@ -145,36 +170,39 @@ consensus.
 Opt a new run into one frozen deterministic check command:
 
 ```sh
-soulmate run start change --goal "Describe the bounded change" \
-  --ledger .soulmate/runs/checked.jsonl \
-  --check-command "cargo test --locked" --config soulmate.json
+exitbind run start change --goal "Describe the bounded change" \
+  --ledger .exitbind/runs/checked.jsonl \
+  --check-command "cargo test --locked" --config exitbind.json
 ```
 
-The native host performs and submits the normal assignments. With the preview
+The native host performs and submits the normal assignments. With the stable
 binary, capture a completed worker submission before executing the check:
 
 ```sh
 set -eu
-worker_event=$(soulmate run submit worker .soulmate/runs/checked.jsonl \
-  --outcome completed --artifact .soulmate/artifacts/worker-result.md \
-  --artifact-root state --event-id --config soulmate.json)
+worker_event=$(exitbind run submit worker .exitbind/runs/checked.jsonl \
+  --outcome completed --artifact .exitbind/artifacts/worker-result.md \
+  --artifact-root state --event-id --config exitbind.json)
 check_exit=0
 cargo test --locked || check_exit=$?
-soulmate run record-check .soulmate/runs/checked.jsonl \
+exitbind run record-check .exitbind/runs/checked.jsonl \
   --target "$worker_event" --check-command "cargo test --locked" \
-  --exit-code "$check_exit" --config soulmate.json
-soulmate run status .soulmate/runs/checked.jsonl --config soulmate.json
+  --exit-code "$check_exit" --config exitbind.json
+exitbind run status .exitbind/runs/checked.jsonl --config exitbind.json
 ```
 
-New checked runs in the `v0.16.0-rc.1` preview use run-event format 4. The
-preview supports both v3 caller-reported ledgers and v4 `observe-check`.
+New checked runs in the `v0.17.0` stable release use run-event format 5. The
+reader retains historical v1–v4 ledgers, including their original producer
+values; v5 binds an Accepted Subject to each result and evidence record.
+The stable release supports v3 caller-reported and v4 observed-check histories while
+new v5 writes use the Exitbind subject binding.
 After the worker submission, the
-frozen command can instead be run and recorded by Soulmate without accepting a
+frozen command can instead be run and recorded by Exitbind without accepting a
 caller command or result override:
 
 ```sh
-soulmate run observe-check .soulmate/runs/checked.jsonl \
-  --target "$worker_event" --config soulmate.json
+exitbind run observe-check .exitbind/runs/checked.jsonl \
+  --target "$worker_event" --config exitbind.json
 ```
 
 This local observation runs synchronously in the configured ProductRoot with
@@ -184,7 +212,7 @@ bounded deadline is appropriate. It keeps command output off JSON stdout,
 records normal exits and POSIX signals as distinct results, and writes no check
 event when launch, timeout, or durable binding fails. On timeout it terminates
 the spawned POSIX process group and reaps the command process. The command runs
-outside the ledger lock, then Soulmate reacquires the lock and revalidates the
+outside the ledger lock, then Exitbind reacquires the lock and revalidates the
 exact durable binding before append. A local observation is still check
 evidence: review and lead acceptance remain separate. Existing v3 ledgers keep
 the caller-reported `record-check` representation.
@@ -213,27 +241,46 @@ check after repair and report the actual result, or request `rework` using the
 normal workflow and submit a fresh artifact. Passing checks and reviewer
 approval remain separate from the lead's final acceptance.
 
+### Exit Path receipt and verification
+
+For an accepted v5 checked run, emit the deterministic Exit Path receipt from
+the ledger:
+
+```sh
+exitbind receipt .exitbind/runs/checked.jsonl --json --config exitbind.json
+exitbind receipt .exitbind/runs/checked.jsonl --json --output .exitbind/receipts/exit-path.json --config exitbind.json
+exitbind verify .exitbind/receipts/exit-path.json --config exitbind.json
+```
+
+The receipt binds the run ledger bytes and head, configuration, Accepted
+Subject, current worker/reviewer/lead artifacts, check targets, review, and
+acceptance. Verification fails closed when covered subject, artifact, ledger,
+configuration, check, review, acceptance, or receipt data drifts. A receipt is
+local evidence, not tamper-proof proof or host/model compliance.
+
 Generate a local aggregate from explicit ledgers:
 
 ```sh
-soulmate run report .soulmate/runs/checked.jsonl --config soulmate.json
-soulmate run report .soulmate/runs/checked.jsonl --json --config soulmate.json
+exitbind run report .exitbind/runs/checked.jsonl --config exitbind.json
+exitbind run report .exitbind/runs/checked.jsonl --json --config exitbind.json
 ```
 
-Historical checked runs use run-event version 3. A checked successor retains its frozen
-check policy and source category. Ordinary starts keep v1, or v2 when a harness
-receipt is supplied; old ledgers are not rewritten. New readers inspect the
-frozen old fixtures. Old binaries reject v3, so retain a supporting binary for
-those ledgers instead of relabeling them as an earlier format.
+Historical checked Soulmate runs use run-event version 3. A checked successor
+retains its frozen check policy and source category. Historical ordinary
+Soulmate starts use v1, or v2 when a harness receipt is supplied; new Exitbind
+starts use v5. Old ledgers are not rewritten, and new readers inspect the
+frozen old fixtures. Binaries predating v3 reject that format, so retain a
+supporting binary for those ledgers instead of relabeling them as an earlier
+format.
 
 `--proof-origin synthetic` is reserved for intentionally seeded runs; the default
 checked-run category is `local_report`. Legacy ledgers without that metadata
 have unclassified origin. The [proof methodology](docs/value-proof-methodology.md)
-defines report interpretation and the token-free `soulmate benchmark` example.
+defines report interpretation and the token-free `exitbind benchmark` example.
 
 Output from an external planner or orientation tool may seed the task, but it
 is not assignment authority. Before starting a run, restate exact observe,
-write, and command limits in Soulmate configuration or a boundary manifest. If
+write, and command limits in Exitbind configuration or a boundary manifest. If
 the producer omits one of those structured fields, treat the handoff as
 incomplete; do not recover authority by parsing guide prose or inferring the
 producer's rules. Every exact observe path must already exist when the run
@@ -245,13 +292,13 @@ use the printed `--config` path with later commands. A checkout can also be run
 directly with a release binary from GitHub.
 
 To update project skill copies after upgrading the CLI, use the explicit
-refresh path. It requires an existing valid `soulmate.json` and only updates
-files carrying Soulmate's ownership marker; unowned or conflicting files cause
+refresh path. It requires an existing valid `exitbind.json` and only updates
+files carrying Exitbind's ownership marker; unowned or conflicting files cause
 the command to refuse the update:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.16.0-rc.1/install.sh | SOULMATE_VERSION=v0.16.0-rc.1 sh
-soulmate init --refresh-skills --root PATH
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/exitbind/v0.17.0/install.sh | EXITBIND_VERSION=v0.17.0 sh
+exitbind init --refresh-skills --root PATH
 ```
 
 The installer verifies the tagged archive checksum and stages the replacement
@@ -274,12 +321,12 @@ new-session evidence separately from on-disk state.
 An active native Codex or Claude `SessionStart` integration may present
 additional context asking the root agent to mention a newer public release.
 The user cache is disposable, checked at most every 24 hours, and failures use
-a one-hour backoff. Set `SOULMATE_NO_UPDATE_CHECK=1` to opt out. The notice
+a one-hour backoff. Set `EXITBIND_NO_UPDATE_CHECK=1` to opt out. The notice
 never installs software, and SubagentStart does not receive it; model surfacing
 is advisory and not proven by the hook. Stable builds consider stable releases;
 prerelease builds may consider stable and prerelease releases. Run
-`soulmate update` explicitly to install a validated release. Versions released
-before this feature cannot self-notify, so install `0.16.0-rc.1` once to enable
+`exitbind update` explicitly to install a validated release. Versions released
+before this feature cannot self-notify, so install `0.17.0` once to enable
 future notices when the integration is active. A first SessionStart may then
 perform the bounded lookup; later starts use the cache.
 
@@ -289,26 +336,17 @@ does not prove source correctness or maintainer intent. With GitHub CLI, verify
 the release archive and its repository provenance explicitly:
 
 ```sh
-gh attestation verify soulmate-x86_64-unknown-linux-gnu.tar.gz \
-  --repo veyndrasystems/soulmate
+gh attestation verify exitbind-x86_64-unknown-linux-gnu.tar.gz \
+  --repo veyndrasystems/exitbind
 ```
 
-Coffee is an optional project skill. Install the exact bundled Coffee and
-Soulmate copies for both Codex and Claude Code only when you opt in:
-
-```sh
-soulmate init --mode portable --with-coffee --root PATH
-soulmate init --refresh-skills --with-coffee --root PATH
-```
-
-Plain `soulmate init` and refresh never install or refresh Coffee. The
-`--with-coffee` flag is the only activation path; there is no `soulmate coffee`
-command, MCP server, daemon, provider integration, or automatic tool runner.
+Coffee is retired as a public brand and feature. Exitbind has no Coffee command,
+flag, MCP server, daemon, provider integration, or automatic tool runner.
 
 Removing the binary or project configuration does not delete these project
 skill directories. Remove the selected `.agents/skills/<name>/` and
 `.claude/skills/<name>/` directories explicitly when no longer wanted. Optional
-Codex/Claude hooks remain a separate, explicit `soulmate hooks apply` choice.
+Codex/Claude hooks remain a separate, explicit `exitbind hooks apply` choice.
 
 Historical records remain inspectable through committed frozen fixtures;
 the installed Rust binary and Rust test suite are the only runtime and
@@ -317,22 +355,22 @@ compatibility authority.
 ## Repository modes
 
 Initialization inside a Git worktree requires an explicit publication choice.
-Portable mode keeps `soulmate.json` and the public `soulmate/` control tree,
-including canonical profiles under `soulmate/agents/`, with the checkout;
+Portable mode keeps `exitbind.json` and the public `exitbind/` control tree,
+including canonical profiles under `exitbind/agents/`, with the checkout;
 runtime state stays ignored and mutation is refused if Git tracks or stages it:
 
 ```sh
-soulmate init --mode portable --root /path/to/product
+exitbind init --mode portable --root /path/to/product
 ```
 
 Local mode is for separately owned harness and product repositories. It writes
-no Soulmate-owned file beneath the product checkout:
+no Exitbind-owned file beneath the product checkout:
 
 ```sh
-soulmate init --mode local --project-id my-project \
+exitbind init --mode local --project-id my-project \
   --root /path/to/product \
   --control-root /path/to/harness/my-project \
-  --state-root /private/state/soulmate/my-project
+  --state-root /private/state/exitbind/my-project
 ```
 
 `ControlRoot` owns configuration and canonical profiles. Project-scoped skill
@@ -342,15 +380,15 @@ artifacts; `StateRoot` owns ledgers, locks, receipts, and private runtime
 evidence. The local roots must be existing,
 canonical, non-symlinked, non-nested directories. A private machine-local
 binding maps the portable project ID to ProductRoot and StateRoot. On another
-machine, recreate only that binding with `soulmate bind --config CONFIG --root
-PRODUCT --state-root STATE`; Soulmate does not copy or synchronize run state.
+machine, recreate only that binding with `exitbind bind --config CONFIG --root
+PRODUCT --state-root STATE`; Exitbind does not copy or synchronize run state.
 
 Existing projects that still reference `.agents/profiles/` can inspect an
 explicit, deterministic migration before changing any bytes:
 
 ```sh
-soulmate migrate layout --config CONFIG
-soulmate migrate layout --apply --config CONFIG
+exitbind migrate layout --config CONFIG
+exitbind migrate layout --apply --config CONFIG
 ```
 
 The dry run prints the exact source, target, agents, hashes, and before/after
@@ -364,13 +402,13 @@ Existing projects that predate the full public/private directory contract can
 inspect, then apply, path migration:
 
 ```sh
-soulmate migrate paths --config CONFIG
-soulmate migrate paths --apply --config CONFIG
+exitbind migrate paths --config CONFIG
+exitbind migrate paths --apply --config CONFIG
 ```
 
 The dry run reports missing directories and any `copy-retain-legacy` of a root
 `harness-manifest.json`. Apply creates the directories and copies reviewed
-manifest bytes to `soulmate/harness/harness-manifest.json` while retaining the
+manifest bytes to `exitbind/harness/harness-manifest.json` while retaining the
 legacy file. It never moves ledgers or receipts, never rewrites historical
 evidence, and is unchanged when repeated against an already-complete layout.
 It preserves the configured portable or local repository mode; migration must
@@ -383,15 +421,15 @@ and optional host discovery copies:
 
 ```text
 PROJECT/
-├── soulmate.json                   # agent-system configuration
-├── soulmate/                       # reviewable profiles and boundaries
+├── exitbind.json                   # agent-system configuration
+├── exitbind/                       # reviewable profiles and boundaries
 │   ├── agents/lead.md
 │   ├── agents/worker.md
 │   ├── agents/reviewer.md
 │   ├── boundaries/                 # prepared empty
 │   ├── policies/                   # prepared empty
 │   └── harness/                    # prepared empty; no manifest yet
-├── .soulmate/                      # private runtime evidence
+├── .exitbind/                      # private runtime evidence
 │   ├── .gitignore
 │   ├── runs/
 │   ├── memory/
@@ -399,13 +437,13 @@ PROJECT/
 │   ├── receipts/
 │   ├── away/
 │   └── locks/
-├── .agents/skills/soulmate/        # host discovery copy; not identity
-└── .claude/skills/soulmate/        # host discovery copy; not identity
+├── .agents/skills/exitbind/        # host discovery copy; not identity
+└── .claude/skills/exitbind/        # host discovery copy; not identity
 ```
 
 These names assign storage responsibilities, not ownership of product source
-or host configuration. `soulmate/` is canonical control material;
-`.soulmate/` is private runtime evidence; the skill directories are host
+or host configuration. `exitbind/` is canonical control material;
+`.exitbind/` is private runtime evidence; the skill directories are host
 projections, never agent identity. `init` does not create `.codex/`,
 `agents.toml`, hook settings, or a harness manifest. In local mode the public
 tree lives under ControlRoot and private state under StateRoot, leaving
@@ -416,29 +454,29 @@ ProductRoot untouched.
 The primary standalone workflow is:
 
 ```text
-soulmate init        create a starter contract and canonical soulmate/agents profiles
-soulmate check       validate profiles and boundaries without running an agent
-soulmate brief       compile one bounded task packet
-soulmate plan        map a goal to bounded named-agent handoffs
-soulmate run         resume handoff state and record artifact evidence
-soulmate verify      check recorded configuration and profile bytes for drift
-soulmate memory      record and inspect authorized memory lifecycle evidence
+exitbind init        create a starter contract and canonical exitbind/agents profiles
+exitbind check       validate profiles and boundaries without running an agent
+exitbind brief       compile one bounded task packet
+exitbind plan        map a goal to bounded named-agent handoffs
+exitbind run         resume handoff state and record artifact evidence
+exitbind verify      check recorded configuration and profile bytes for drift
+exitbind memory      record and inspect authorized memory lifecycle evidence
 ```
 
-The JSON configuration in [examples/soulmate.json](examples/soulmate.json) is a
-working fixture for the deterministic core. `soulmate doctor` can report
+The JSON configuration in [examples/exitbind.json](examples/exitbind.json) is a
+working fixture for the deterministic core. `exitbind doctor` can report
 missing profiles and optional host commands without invoking them. When no
 direct dotagents command is on `PATH`, it reports an observed `npx` launcher
 and `agents.toml` separately without claiming that the package was invoked.
-The optional `soulmate hooks` command manages only explicit project-local
+The optional `exitbind hooks` command manages only explicit project-local
 Codex or Claude bindings.
 
 To reuse a project-specific agent brief, audit it first and keep iterating on a
 compact portable runtime brief until the audit is clean:
 
 ```text
-soulmate profile audit ./old-agent --forbid-term OLD_PROJECT --json
-soulmate profile import portable_worker ./old-agent --purpose "Carry a bounded portable brief"
+exitbind profile audit ./old-agent --forbid-term OLD_PROJECT --json
+exitbind profile import portable_worker ./old-agent --purpose "Carry a bounded portable brief"
 ```
 
 Audit accepts a regular file or a directory with one of the narrow supported
@@ -471,10 +509,10 @@ exact-scope rights. Rejected, revoked, expired, changed, malformed, duplicate,
 or unauthorized items are not recalled.
 
 ```text
-soulmate memory propose invariant_keeper docs/invariant.md --scope invariants --ledger .soulmate/memory/invariant.jsonl
-soulmate memory review invariant_keeper .soulmate/memory/invariant.jsonl
-soulmate memory promote lead .soulmate/memory/invariant.jsonl
-soulmate memory resolve invariant_keeper --json --config soulmate.json
+exitbind memory propose invariant_keeper docs/invariant.md --scope invariants --ledger .exitbind/memory/invariant.jsonl
+exitbind memory review invariant_keeper .exitbind/memory/invariant.jsonl
+exitbind memory promote lead .exitbind/memory/invariant.jsonl
+exitbind memory resolve invariant_keeper --json --config exitbind.json
 ```
 
 Recall is disabled without an explicit `memory` object. It scans only shallow
@@ -492,10 +530,10 @@ the selected profile, requested runtime, declared skills/boundary, memory
 references, upstream artifact hashes, and producer evidence. These are
 selection/presentation records, not proof that a host or model complied.
 
-For a readable current assignment with the preview binary:
+For a readable current assignment with the stable binary:
 
 ```sh
-soulmate run next .soulmate/runs/run.jsonl --text --config soulmate.json
+exitbind run next .exitbind/runs/run.jsonl --text --config exitbind.json
 ```
 
 `--text` presents the validated goal, stage/attempt, pending role and actor,
@@ -515,14 +553,14 @@ remains the executor and enforcement point for its own checks; a local report
 binding does not authenticate CI execution or replace branch protection.
 
 Use an exact run boundary to narrow configured maxima without editing config.
-This example uses the separate advanced fixture `examples/soulmate.json`; it
-is not the starter config created by `soulmate init`:
+This example uses the separate advanced fixture `examples/exitbind.json`; it
+is not the starter config created by `exitbind init`:
 
 ```sh
-soulmate run start change --goal "One bounded change" \
-  --ledger .soulmate/boundary-run.jsonl \
+exitbind run start change --goal "One bounded change" \
+  --ledger .exitbind/boundary-run.jsonl \
   --boundary examples/boundaries/change.json \
-  --config examples/soulmate.json
+  --config examples/exitbind.json
 ```
 
 Every attempt uses a fresh StateRoot artifact path. Prior artifacts are
@@ -534,7 +572,7 @@ During an attended active session, every implementation worker and reviewer
 uses the host's native subagent spawn with the assignment's exact
 `nativeTaskName`. If native spawn is unavailable, stop and return the pending
 assignment to the operator; do not fall back to shell `codex exec` or
-`soulmate away`. This temporary quarantine tracks
+`exitbind away`. This temporary quarantine tracks
 [openai/codex#31894](https://github.com/openai/codex/issues/31894), a strong
 external symptom match for affected `codex exec` no-result runs, not a proven
 root cause. Until a later repository change retires the rule after the upstream
@@ -544,7 +582,7 @@ token-efficiency baselines. Historical evidence remains in place; quarantine
 does not delete or rewrite it.
 
 When the operator explicitly disconnects during one already-authorized Codex
-assignment, `soulmate away` uses a task-specific/private tmux socket and
+assignment, `exitbind away` uses a task-specific/private tmux socket and
 session on the same host to keep that native process alive. This is a
 same-host process handoff, not an OS sandbox or process isolation. It is part
 of the single Rust binary and requires no Python, Node.js, daemon, or second
@@ -553,30 +591,30 @@ runner rejects fallback selection, revalidates exact profile and memory bytes,
 and refuses a second same-host launch of the same pending assignment.
 
 For evidence-complete handoff, first create
-`soulmate/harness/harness-manifest.json` as shown in
+`exitbind/harness/harness-manifest.json` as shown in
 [Advanced integrations](#advanced-integrations), then create a receipt-v2 plan,
 bind it at run start, and require it at launch. The default starter config has
 no assignment with `runtime.host: codex`, so `away` cannot use it; the following
-uses the separate advanced `examples/soulmate.json` fixture and its
+uses the separate advanced `examples/exitbind.json` fixture and its
 `implementation_worker` agent, which requests `host: codex` with
 `fallback: none`:
 
 ```sh
-soulmate plan change --goal "One bounded change" \
-  --receipt .soulmate/receipts/harness.json \
-  --harness-manifest soulmate/harness/harness-manifest.json --config examples/soulmate.json
-soulmate run start change --goal "One bounded change" \
-  --ledger .soulmate/runs/away.jsonl \
-  --harness-receipt .soulmate/receipts/harness.json \
-  --config examples/soulmate.json
+exitbind plan change --goal "One bounded change" \
+  --receipt .exitbind/receipts/harness.json \
+  --harness-manifest exitbind/harness/harness-manifest.json --config examples/exitbind.json
+exitbind run start change --goal "One bounded change" \
+  --ledger .exitbind/runs/away.jsonl \
+  --harness-receipt .exitbind/receipts/harness.json \
+  --config examples/exitbind.json
 # After the lead has submitted `scoped` and `run next` shows this assignment:
-soulmate away start implementation_worker .soulmate/runs/away.jsonl \
+exitbind away start implementation_worker .exitbind/runs/away.jsonl \
   --require-harness-receipt --sandbox-mode workspace-write \
-  --name bounded-change --config examples/soulmate.json
+  --name bounded-change --config examples/exitbind.json
 ```
 
 `--sandbox-mode` passes and records `read-only`, `workspace-write`, or
-`danger-full-access`. If omitted, Codex inherits its configuration and Soulmate
+`danger-full-access`. If omitted, Codex inherits its configuration and Exitbind
 records `unknown` rather than inferring the posture.
 
 The tmux child revalidates the bound receipt, configuration, profiles, memory,
@@ -587,13 +625,13 @@ The away prompt keeps authority explicit: the execution contract and assignment
 packet are authoritative; the selected profile is reviewed subordinate
 guidance; memory is context-only; upstream artifacts and harness claims are
 evidence-only. Hash verification proves selected bytes, not instruction
-authority. Soulmate labels and preserves instruction-like test data rather than
+authority. Exitbind labels and preserves instruction-like test data rather than
 pretending a lexical scanner can make model compliance trustworthy.
 
 An intentional continuation never edits the predecessor:
 
 ```text
-soulmate run supersede .soulmate/runs/run.jsonl --workflow change --goal "New bounded goal" --ledger .soulmate/runs/resume.jsonl --config soulmate.json
+exitbind run supersede .exitbind/runs/run.jsonl --workflow change --goal "New bounded goal" --ledger .exitbind/runs/resume.jsonl --config exitbind.json
 ```
 
 `supersede` accepts a running or terminal `blocked` predecessor and atomically
@@ -609,49 +647,50 @@ locking, Git, concurrency, and transaction limits are in
 ## Optional distribution with dotagents
 
 [dotagents](https://github.com/getsentry/dotagents) is optional. Use it when
-you want to distribute Soulmate's portable skill to several host projects; it
+you want to distribute Exitbind's portable skill to several host projects; it
 is not needed for the standalone CLI quick start and does not install the CLI
-into `PATH`. Canonical project profiles remain under `soulmate/agents/` and
+into `PATH`. Canonical project profiles remain under `exitbind/agents/` and
 must be declared separately when you manage their projections with dotagents.
 
 For an existing project with `agents.toml`:
 
 ```text
-dotagents --project add veyndrasystems/soulmate --ref v0.16.0-rc.1
+dotagents --project add veyndrasystems/exitbind --ref v0.17.0
 ```
 
 For a new dotagents-managed project:
 
 ```text
 dotagents --project init
-dotagents --project add veyndrasystems/soulmate --ref v0.16.0-rc.1
+dotagents --project add veyndrasystems/exitbind --ref v0.17.0
 ```
 
 During `dotagents --project init`, select the hosts you use. `dotagents add`
 installs the selected plugin immediately; a redundant install is not required.
 
-Soulmate does not implement a package manager, mutate global host configuration,
+Exitbind does not implement a package manager, mutate global host configuration,
 or activate hooks merely because a plugin was installed. The portable Agent
 Plugins v1 manifest carries the root `skills/` bundle, which stable dotagents
 releases can install without activating the preserved host-hook extension. The
-`systems.veyndra.soulmate/` directory keeps host-specific manifests and hooks as
-compatibility resources only. A successful dotagents install proves that the
-portable bundle was accepted, not that a host activated or executed a hook.
+historical `systems.veyndra.soulmate/` directory keeps host-specific manifests
+and hooks as compatibility resources only. A successful dotagents install
+proves that the portable bundle was accepted, not that a host activated or
+executed a hook.
 
 ## Optional Codex and Claude hooks
 
 Hooks are explicit project-local, advisory, fail-open integrations:
 
 ```text
-soulmate hooks plan --hosts codex,claude --root PATH
-soulmate hooks apply --hosts codex,claude --root PATH
-soulmate hooks status --hosts codex,claude --root PATH
-soulmate hooks remove --hosts codex,claude --root PATH
+exitbind hooks plan --hosts codex,claude --root PATH
+exitbind hooks apply --hosts codex,claude --root PATH
+exitbind hooks status --hosts codex,claude --root PATH
+exitbind hooks remove --hosts codex,claude --root PATH
 ```
 
 They write only `.codex/hooks.json` and `.claude/settings.json`, preserve
 unrelated settings, refuse malformed/conflicting/symlinked targets, and require
-the expected `soulmate hook-run` protocol on `PATH`. Session context is a
+the expected `exitbind hook-run` protocol on `PATH`. Session context is a
 bounded project summary; subagent context presents the exact selected profile
 and declared boundary. Hook execution/presentation is not activation or model
 compliance proof. POSIX behavior is CI-tested on Linux and macOS; Windows
@@ -662,7 +701,7 @@ In local mode, `hook-run` resolves ControlRoot only through the exact private
 machine binding whose ProductRoot matches the host `cwd`; it never searches
 arbitrary parent directories. Bindings created before ControlRoot was recorded
 remain readable for normal configured commands. Repeat the original
-`soulmate bind --config CONFIG --root PRODUCT --state-root STATE` command to
+`exitbind bind --config CONFIG --root PRODUCT --state-root STATE` command to
 add ControlRoot after all three existing roots match exactly.
 
 ## Removal
@@ -670,38 +709,36 @@ add ControlRoot after all three existing roots match exactly.
 Standalone users remove the installed binary explicitly:
 
 ```text
-rm "${SOULMATE_INSTALL_PREFIX:-$HOME/.local/bin}/soulmate"
+rm "${EXITBIND_INSTALL_PREFIX:-$HOME/.local/bin}/exitbind"
 ```
 
-The project-scoped skill copies created by `soulmate init` are ordinary project
+The project-scoped skill copies created by `exitbind init` are ordinary project
 files and are intentionally not removed with the binary. Delete
-`.agents/skills/soulmate/` and `.claude/skills/soulmate/` explicitly if the
-project should no longer discover the Soulmate skill. If `--with-coffee` was
-used, also delete `.agents/skills/coffee/` and `.claude/skills/coffee/`; plain
-init never creates those optional directories. Removing the binary does not
-remove project files, ledgers, receipts, hooks, or skills.
+`.agents/skills/exitbind/` and `.claude/skills/exitbind/` explicitly if the
+project should no longer discover the Exitbind skill. Removing the binary does
+not remove project files, ledgers, receipts, hooks, or skills.
 
 If optional hooks or dotagents are enabled, remove project hooks while the CLI
 is still available, then remove the optional plugin and CLI:
 
 ```text
-soulmate hooks remove --hosts codex,claude --root PATH
-dotagents --project remove soulmate
-rm "${SOULMATE_INSTALL_PREFIX:-$HOME/.local/bin}/soulmate"
+exitbind hooks remove --hosts codex,claude --root PATH
+dotagents --project remove exitbind
+rm "${EXITBIND_INSTALL_PREFIX:-$HOME/.local/bin}/exitbind"
 ```
 
 Reload the host or start a new session after plugin, hook, or skill changes.
-Removing Soulmate leaves the underlying host and project usable.
+Removing Exitbind leaves the underlying host and project usable.
 
 ## Evaluation
 
 From a cloned checkout, this creates a disposable one-file sample project,
-records the file as a run artifact, changes its bytes, and shows Soulmate
+records the file as a run artifact, changes its bytes, and shows Exitbind
 refusing the next transition. It invokes no model, consumes no model tokens,
 touches no user project, and removes the temporary directory:
 
 ```sh
-SOULMATE_BIN=target/debug/soulmate ./scripts/demo-refusal.sh
+EXITBIND_BIN=target/debug/exitbind ./scripts/demo-refusal.sh
 ```
 
 The refusal proves only the artifact-drift check. The authority and
@@ -709,7 +746,7 @@ non-guarantee contract is defined once in [SECURITY.md](SECURITY.md).
 
 ## Versioning and release contract
 
-Soulmate uses the change in its public contract—not elapsed time or the number
+Exitbind uses the change in its public contract—not elapsed time or the number
 of commits—to choose a version while it remains in `0.x`:
 
 - `0.y.Z` is a backward-compatible defect, security, documentation, packaging,
@@ -738,13 +775,13 @@ compatibility, privacy, and release gates.
 ## Advanced integrations
 
 Runtime `host`, `model`, reasoning, and fallback values are opaque requested
-bindings. Soulmate never stores provider credentials, routes models, or
+bindings. Exitbind never stores provider credentials, routes models, or
 silently substitutes a fallback. An agent's `skills` list is selection intent;
 dotagents and the native host own installation, discovery, and invocation.
 
-Coffee may prepare a bounded goal when separately available. Venus or another
+Generic readiness guidance is part of the lead surface. Venus or another
 cross-session system remains advisory: a human accepts/narrows its Goal before
-Soulmate starts a run. Soulmate never ingests raw session history or gains
+Exitbind starts a run. Exitbind never ingests raw session history or gains
 cross-session authority.
 
 For opt-in dogfooding evidence, place a version-1 harness manifest beneath
@@ -752,12 +789,12 @@ ControlRoot and pass it only when creating an existing brief or plan receipt:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.16.0-rc.1/schema/harness-manifest.schema.json",
+  "$schema": "https://raw.githubusercontent.com/veyndrasystems/exitbind/v0.17.0/schema/exitbind-harness-manifest.schema.json",
   "version": 1,
   "project": { "id": "my-project", "session": "codex-2026-08-30" },
   "harness": { "name": "my-harness", "version": "2026.08.30" },
   "activations": [
-    { "kind": "skill", "name": "soulmate", "evidence": "configured" },
+    { "kind": "skill", "name": "exitbind", "evidence": "configured" },
     { "kind": "perspective", "name": "qa-engineer", "evidence": "presented" },
     { "kind": "ponytail", "name": "ponytail:ponytail", "evidence": "hook_observed" }
   ]
@@ -765,10 +802,10 @@ ControlRoot and pass it only when creating an existing brief or plan receipt:
 ```
 
 ```sh
-soulmate plan change --goal "Bounded goal" \
-  --receipt .soulmate/receipts/harness.json \
-  --harness-manifest soulmate/harness/harness-manifest.json --config soulmate.json
-soulmate verify .soulmate/receipts/harness.json --config soulmate.json
+exitbind plan change --goal "Bounded goal" \
+  --receipt .exitbind/receipts/harness.json \
+  --harness-manifest exitbind/harness/harness-manifest.json --config exitbind.json
+exitbind verify .exitbind/receipts/harness.json --config exitbind.json
 ```
 
 The canonical manifest path is fixed beneath ControlRoot. The legacy root
@@ -778,10 +815,10 @@ identities plus the non-sensitive kind/evidence enums. Raw project, session,
 harness, activation, and verifier strings remain in the operator-owned
 manifest and are omitted from the receipt; deterministic hashes can still
 permit offline confirmation of guessed low-entropy identifiers. Without
-`--harness-manifest`, Soulmate continues to create and inspect receipt version
+`--harness-manifest`, Exitbind continues to create and inspect receipt version
 1. `configured`, `presented`, `agent_declared`, and `hook_observed` report
 their source level; none proves model compliance. `independently_verified` is
-an off-box verifier claim: Soulmate validates its format and binds it, but does
+an off-box verifier claim: Exitbind validates its format and binds it, but does
 not hash a local artifact or authenticate the verifier. Unknown fields and free-form content
 are rejected, so prompts, transcripts, secrets, raw environment values, and
 unrelated project content have no manifest field. See
@@ -795,9 +832,9 @@ The manifest `$schema` value is advisory; compatibility is controlled by its
 
 The intended public identifiers are:
 
-- GitHub: `veyndrasystems/soulmate`
-- package namespace, if needed: `@veyndra/soulmate`
-- CLI: `soulmate`
+- GitHub: `veyndrasystems/exitbind`
+- package namespace, if needed: `@veyndra/exitbind`
+- CLI: `exitbind`
 
-The unscoped npm package name `soulmate` is already owned by an unrelated
-project, so Soulmate will not claim or depend on it.
+The unscoped npm package name `exitbind` is already owned by an unrelated
+project, so Exitbind will not claim or depend on it.

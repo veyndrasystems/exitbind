@@ -2,7 +2,7 @@
 set -eu
 
 fail() {
-  printf '%s\n' "soulmate published installer smoke: $*" >&2
+  printf '%s\n' "exitbind published installer smoke: $*" >&2
   exit 1
 }
 
@@ -41,9 +41,9 @@ esac
 expected_version=$("$expected" version) || fail 'expected same-workflow binary did not report its version'
 test -n "$expected_version" || fail 'expected same-workflow binary reported an empty version'
 expected_tag="v$expected_version"
-version=${SOULMATE_VERSION:-$expected_tag}
+version=${EXITBIND_VERSION:-$expected_tag}
 test "$version" = "$expected_tag" || fail "workflow release tag $version does not match expected binary $expected_tag"
-repository=${SOULMATE_REPOSITORY:-veyndrasystems/soulmate}
+repository=${EXITBIND_REPOSITORY:-veyndrasystems/exitbind}
 test -n "$repository" || fail 'release repository is empty'
 command -v curl >/dev/null 2>&1 || fail 'curl is required for real published-asset retrieval'
 
@@ -57,7 +57,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 prefix="$root/prefix with spaces"
-global="$home/.local/bin/soulmate"
+global="$home/.local/bin/exitbind"
 global_state="$root/global-state"
 if test -e "$global" || test -L "$global"; then
   test -f "$global" || fail "existing global install is not a regular file: $global"
@@ -71,9 +71,9 @@ path="$prefix${PATH:+:$PATH}"
 if env \
   HOME="$home" \
   PATH="$path" \
-  SOULMATE_INSTALL_PREFIX="$prefix" \
-  SOULMATE_REPOSITORY="$repository" \
-  SOULMATE_VERSION="$version" \
+  EXITBIND_INSTALL_PREFIX="$prefix" \
+  EXITBIND_REPOSITORY="$repository" \
+  EXITBIND_VERSION="$version" \
   sh "$installer" >"$root/install.log" 2>&1
 then
   :
@@ -83,11 +83,11 @@ else
   exit "$status"
 fi
 
-installed="$prefix/soulmate"
+installed="$prefix/exitbind"
 test -x "$installed" || fail 'published installer did not create an executable'
 cmp "$expected" "$installed"
 test "$("$installed" version)" = "$expected_version"
-test "$(PATH="$path" command -v soulmate)" = "$installed"
+test "$(PATH="$path" command -v exitbind)" = "$installed"
 
 case "$(cat "$global_state")" in
   present)
@@ -102,5 +102,5 @@ case "$(cat "$global_state")" in
   *) fail 'invalid global installation state' ;;
 esac
 
-"$script_dir/onboarding-smoke.sh" "$installed" "$repo_root/skills/soulmate/SKILL.md" >/dev/null
+"$script_dir/onboarding-smoke.sh" "$installed" "$repo_root/skills/exitbind/SKILL.md" >/dev/null
 printf '%s\n' "published installer smoke passed target=$target version=$expected_version"

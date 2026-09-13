@@ -2,7 +2,7 @@
 set -eu
 
 fail() {
-  printf '%s\n' "soulmate installer smoke: $*" >&2
+  printf '%s\n' "exitbind installer smoke: $*" >&2
   exit 1
 }
 
@@ -16,7 +16,7 @@ case "$target" in
   x86_64-unknown-linux-gnu|aarch64-apple-darwin|x86_64-apple-darwin) ;;
   *) fail "unsupported release target $target" ;;
 esac
-stem="soulmate-$target"
+stem="exitbind-$target"
 archive="$stem.tar.gz"
 checksum="$archive.sha256"
 test -f "$dist/$stem" || fail "release executable is missing: $dist/$stem"
@@ -56,13 +56,13 @@ chmod 0755 "$root/curl/curl"
 
 prefix="$root/prefix with spaces"
 path="$root/curl:${PATH:-/usr/bin:/bin}"
-repo=${SOULMATE_REPOSITORY:-veyndrasystems/soulmate}
+repo=${EXITBIND_REPOSITORY:-veyndrasystems/exitbind}
 if env \
   HOME="$root/home" \
   PATH="$path" \
-  SOULMATE_INSTALL_PREFIX="$prefix" \
-  SOULMATE_REPOSITORY="$repo" \
-  SOULMATE_VERSION="$tag" \
+  EXITBIND_INSTALL_PREFIX="$prefix" \
+  EXITBIND_REPOSITORY="$repo" \
+  EXITBIND_VERSION="$tag" \
   SOULMATE_SMOKE_BASE="https://github.com/$repo/releases/download/$tag" \
   SOULMATE_SMOKE_ARCHIVE="$archive" \
   SOULMATE_SMOKE_CHECKSUM="$checksum" \
@@ -78,16 +78,16 @@ else
   exit "$status"
 fi
 
-test -x "$prefix/soulmate"
-cmp "$dist/$stem" "$prefix/soulmate"
-test "$("$prefix/soulmate" version)" = "$version"
+test -x "$prefix/exitbind"
+cmp "$dist/$stem" "$prefix/exitbind"
+test "$("$prefix/exitbind" version)" = "$version"
 test "$(sed -n '1p' "$calls")" = "https://github.com/$repo/releases/download/$tag/$archive"
 test "$(sed -n '2p' "$calls")" = "https://github.com/$repo/releases/download/$tag/$checksum"
 test "$(wc -l < "$calls" | tr -d ' ')" = 2
-benchmark_line=$(grep -n -F "Next: \"$prefix/soulmate\" benchmark" "$root/install.log" | cut -d: -f1)
-init_line=$(grep -n -F "Then: cd YOUR_PROJECT && \"$prefix/soulmate\" init --mode portable" "$root/install.log" | cut -d: -f1)
+benchmark_line=$(grep -n -F "Next: \"$prefix/exitbind\" benchmark" "$root/install.log" | cut -d: -f1)
+init_line=$(grep -n -F "Then: cd YOUR_PROJECT && \"$prefix/exitbind\" init --mode portable" "$root/install.log" | cut -d: -f1)
 test -n "$benchmark_line"
 test -n "$init_line"
 test "$benchmark_line" -lt "$init_line"
-"$script_dir/onboarding-smoke.sh" "$prefix/soulmate" "$repo_root/skills/soulmate/SKILL.md" >/dev/null
+"$script_dir/onboarding-smoke.sh" "$prefix/exitbind" "$repo_root/skills/exitbind/SKILL.md" >/dev/null
 printf '%s\n' "installer smoke passed target=$target version=$version"

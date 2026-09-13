@@ -52,12 +52,25 @@ fn main() {
         .collect::<Result<Vec<_>, _>>();
     let result = arguments.and_then(cli::run);
     if let Err(error) = result {
-        if let Some(machine) = error.strip_prefix("SOULMATE_JSON:") {
+        if let Some(machine) = error
+            .strip_prefix("EXITBIND_JSON:")
+            .or_else(|| error.strip_prefix("SOULMATE_JSON:"))
+        {
             println!("{machine}");
         } else if json_output {
             println!("{}", serde_json::json!({ "error": error }));
         } else {
-            eprintln!("soulmate: {error}");
+            let name = std::env::args_os()
+                .next()
+                .and_then(|x| x.into_string().ok())
+                .and_then(|x| {
+                    std::path::Path::new(&x)
+                        .file_name()
+                        .and_then(|x| x.to_str())
+                        .map(str::to_owned)
+                })
+                .unwrap_or_else(|| "exitbind".into());
+            eprintln!("{name}: {error}");
         }
         std::process::exit(1);
     }

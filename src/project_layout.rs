@@ -22,6 +22,57 @@ pub(crate) const CANONICAL_STATE_DIRS: [&str; 6] = [
     ".soulmate/locks",
 ];
 
+/// The legacy constants above remain stable for readers and compatibility
+/// tests. New Exitbind invocations select their own namespace at this small
+/// boundary so an old `soulmate` invocation never rewrites its layout.
+pub(crate) fn exitbind_surface() -> bool {
+    crate::producer::exitbind_surface()
+}
+
+pub(crate) fn agents_dir() -> &'static str {
+    if exitbind_surface() {
+        "exitbind/agents"
+    } else {
+        CANONICAL_AGENTS_DIR
+    }
+}
+
+pub(crate) fn control_dirs() -> [&'static str; 4] {
+    if exitbind_surface() {
+        [
+            "exitbind/agents",
+            "exitbind/boundaries",
+            "exitbind/policies",
+            "exitbind/harness",
+        ]
+    } else {
+        CANONICAL_CONTROL_DIRS
+    }
+}
+
+pub(crate) fn state_dirs() -> [&'static str; 6] {
+    if exitbind_surface() {
+        [
+            ".exitbind/runs",
+            ".exitbind/memory",
+            ".exitbind/artifacts",
+            ".exitbind/receipts",
+            ".exitbind/away",
+            ".exitbind/locks",
+        ]
+    } else {
+        CANONICAL_STATE_DIRS
+    }
+}
+
+pub(crate) fn state_namespace() -> &'static str {
+    if exitbind_surface() {
+        ".exitbind"
+    } else {
+        ".soulmate"
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Mode {
     Portable,
@@ -346,9 +397,11 @@ pub(crate) fn config_for_product(product_root: &Path) -> Result<Option<PathBuf>,
         let control = canonical_directory(Path::new(
             control.as_str().ok_or("invalid project binding")?,
         ))?;
-        let candidate = control.join("soulmate.json");
-        let metadata = fs::symlink_metadata(&candidate)
-            .map_err(|_| "local project binding has no configuration".to_owned())?;
+        let candidate = [control.join("exitbind.json"), control.join("soulmate.json")]
+            .into_iter()
+            .find(|candidate| candidate.is_file())
+            .ok_or_else(|| "local project binding has no configuration".to_owned())?;
+        let metadata = fs::symlink_metadata(&candidate).map_err(|error| error.to_string())?;
         if metadata.file_type().is_symlink() || !metadata.is_file() {
             return Err("local project binding configuration is unsafe".into());
         }
@@ -369,17 +422,32 @@ fn bound_directory(binding: &Value, field: &str) -> Result<PathBuf, String> {
 }
 
 fn binding_directory(create: bool) -> Result<PathBuf, String> {
-    let base = std::env::var_os("SOULMATE_BINDINGS_DIR")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("XDG_STATE_HOME")
-                .map(|value| PathBuf::from(value).join("soulmate/bindings"))
+    let base = if exitbind_surface() {
+        std::env::var_os("EXITBIND_BINDINGS_DIR")
+            .or_else(|| std::env::var_os("SOULMATE_BINDINGS_DIR"))
+    } else {
+        std::env::var_os("SOULMATE_BINDINGS_DIR")
+    }
+    .map(PathBuf::from)
+    .or_else(|| {
+        std::env::var_os("XDG_STATE_HOME").map(|value| {
+            PathBuf::from(value).join(if exitbind_surface() {
+                "exitbind/bindings"
+            } else {
+                "soulmate/bindings"
+            })
         })
-        .or_else(|| {
-            std::env::var_os("HOME")
-                .map(|value| PathBuf::from(value).join(".local/state/soulmate/bindings"))
+    })
+    .or_else(|| {
+        std::env::var_os("HOME").map(|value| {
+            PathBuf::from(value).join(if exitbind_surface() {
+                ".local/state/exitbind/bindings"
+            } else {
+                ".local/state/soulmate/bindings"
+            })
         })
-        .ok_or("cannot determine machine-local binding directory")?;
+    })
+    .ok_or("cannot determine machine-local binding directory")?;
     if !base.is_absolute() {
         return Err("machine-local binding directory must be absolute".into());
     }

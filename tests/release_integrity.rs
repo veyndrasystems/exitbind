@@ -110,7 +110,7 @@ fn current_release_and_historical_changelog_pass_with_installer_overrides() {
 
 #[test]
 fn stale_and_malformed_readme_install_commands_are_rejected() {
-    let current = format!("curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v{VERSION}/install.sh | sh");
+    let current = format!("curl -fsSL https://raw.githubusercontent.com/veyndrasystems/exitbind/v{VERSION}/install.sh | sh");
     for replacement in [
         current.replace(&format!("v{VERSION}"), "v0.10.0"),
         current.replace("install.sh", "install.sh.invalid"),
@@ -125,7 +125,7 @@ fn stale_and_malformed_readme_install_commands_are_rejected() {
 
 #[test]
 fn html_comments_cannot_hide_the_readme_install_instruction() {
-    let command = format!("curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v{VERSION}/install.sh | sh");
+    let command = format!("curl -fsSL https://raw.githubusercontent.com/veyndrasystems/exitbind/v{VERSION}/install.sh | sh");
     let block = format!("```sh\n{command}\nexport PATH=\"$HOME/.local/bin:$PATH\"\n```");
     for hidden in [
         format!("<!--\n{block}\n-->"),
@@ -174,6 +174,33 @@ fn complete_reference_tokens_reject_prefix_collisions_and_other_majors() {
 }
 
 #[test]
+fn release_refs_skip_only_immutable_legacy_schema_ids() {
+    let fixture = Fixture::release();
+    for name in [
+        "schema/harness-manifest.schema.json",
+        "schema/soulmate.schema.json",
+        "schema/run-boundary.schema.json",
+    ] {
+        fs::write(
+            fixture.0.join(name),
+            "https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.16.0-rc.1/schema/legacy.json\n",
+        )
+        .unwrap();
+    }
+    expect_success(gate("check-release-refs.sh", &fixture.0));
+
+    fs::write(
+        fixture.0.join("schema/unrelated.schema.json"),
+        "stale v0.16.0-rc.1 reference\n",
+    )
+    .unwrap();
+    expect_failure(
+        gate("check-release-refs.sh", &fixture.0),
+        "unrelated stale schema reference",
+    );
+}
+
+#[test]
 fn missing_release_sources_and_scan_roots_are_rejected() {
     for name in RELEASE_FILES.iter().chain(SCAN_DIRS) {
         let fixture = Fixture::release();
@@ -190,10 +217,10 @@ fn missing_release_sources_and_scan_roots_are_rejected() {
 #[test]
 fn absent_or_drifted_required_version_values_are_rejected() {
     let package = format!("version = \"{VERSION}\"");
-    let lock = format!("name = \"soulmate\"\nversion = \"{VERSION}\"");
+    let lock = format!("name = \"exitbind\"\nversion = \"{VERSION}\"");
     let manifest = format!("\"version\": \"{VERSION}\",");
-    let installer = format!("version=\"${{SOULMATE_VERSION:-v{VERSION}}}\"");
-    let wsl = format!("test \"$(soulmate version)\" = \"{VERSION}\"");
+    let installer = format!("version=\"${{EXITBIND_VERSION:-v{VERSION}}}\"");
+    let wsl = format!("test \"$(exitbind version)\" = \"{VERSION}\"");
     let changelog = format!("## {VERSION}\n");
     for (file, marker) in [
         ("Cargo.toml", package.as_str()),
@@ -222,9 +249,13 @@ fn absent_or_drifted_required_version_values_are_rejected() {
 #[test]
 fn plugin_manifests_keep_portable_openai_and_compatibility_presentation() {
     let first_sentence =
-        "It verifies what you asked an agent to do and what came back, in the same record.";
-    let cli_boundary = "Use it as an opt-in, bounded project guidance surface; ordinary work remains unchanged. Plugin installation provides host guidance and does not install the separate soulmate CLI.";
+        "Exitbind — No result exits unbound. Bind the evidence to the exact result before exit.";
+    let cli_boundary = "For your existing Codex or Claude lead; this skills-only plugin installs guidance, not the separate Exitbind CLI.";
     let presentation = format!("{first_sentence} {cli_boundary}");
+    let legacy_sentence =
+        "It verifies what you asked an agent to do and what came back, in the same record.";
+    let legacy_boundary = "Use it as an opt-in, bounded project guidance surface; ordinary work remains unchanged. Plugin installation provides host guidance and does not install the separate soulmate CLI.";
+    let legacy_presentation = format!("{legacy_sentence} {legacy_boundary}");
     let root: Value = serde_json::from_str(include_str!("../plugin.json")).unwrap();
     let codex: Value = serde_json::from_str(include_str!(
         "../systems.veyndra.soulmate/.codex-plugin/plugin.json"
@@ -235,13 +266,17 @@ fn plugin_manifests_keep_portable_openai_and_compatibility_presentation() {
     ))
     .unwrap();
 
+    assert!(root["description"]
+        .as_str()
+        .unwrap()
+        .starts_with(first_sentence));
+    assert!(root["description"].as_str().unwrap().contains(cli_boundary));
     for description in [
-        root["description"].as_str().unwrap(),
         codex["description"].as_str().unwrap(),
         claude["description"].as_str().unwrap(),
     ] {
-        assert!(description.starts_with(first_sentence));
-        assert!(description.contains(cli_boundary));
+        assert!(description.starts_with(legacy_sentence));
+        assert!(description.contains(legacy_boundary));
     }
 
     assert_eq!(
@@ -285,13 +320,13 @@ fn plugin_manifests_keep_portable_openai_and_compatibility_presentation() {
     );
     assert_eq!(
         codex["interface"]["longDescription"].as_str(),
-        Some(presentation.as_str())
+        Some(legacy_presentation.as_str())
     );
     assert_eq!(codex["skills"].as_str(), Some("./skills/"));
     assert_eq!(
         root["extensions"]["systems.veyndra.soulmate"]["purpose"].as_str(),
         Some(
-            "Preserved host-hook compatibility resources; host-specific activation is not implied."
+            "Historical host-hook compatibility resources; host-specific activation is not implied."
         )
     );
 }
@@ -571,10 +606,15 @@ fn synthetic_merge_cannot_mask_a_rewritten_or_missing_candidate() {
 
 #[test]
 #[cfg(unix)]
-fn preview_publication_requires_an_existing_published_prerelease() {
+fn stable_publication_requires_a_published_non_draft_release() {
     use std::os::unix::fs::PermissionsExt;
 
     let fixture = Fixture::new("preview-publication");
+    fs::write(
+        fixture.0.join("Cargo.toml"),
+        "[package]\nname = \"fixture\"\nversion = \"99.98.97\"\n",
+    )
+    .unwrap();
     let gh = fixture.0.join("gh");
     fs::write(
         &gh,
@@ -605,16 +645,16 @@ esac
     )
     .unwrap();
     for (tag, scenario, success, create) in [
-        ("v99.98.97-rc.1", "missing", false, false),
-        ("v99.98.97-rc.1", "read_error", false, false),
-        ("v99.98.97-rc.1", "true_failure", false, false),
-        ("v99.98.97-rc.1", "stable", false, false),
-        ("v99.98.97-rc.1", "draft", false, false),
-        ("v99.98.97-rc.1", "malformed", false, false),
-        ("v99.98.97-rc.1", "ready", true, false),
         ("v99.98.97", "ready", true, false),
         ("v99.98.97", "missing", true, true),
-        ("v99.98.97+build-one", "missing", true, true),
+        ("v99.98.97", "stable", false, false),
+        ("v99.98.97", "draft", false, false),
+        ("v99.98.97", "malformed", false, false),
+        ("v99.98.97-rc.1", "ready", false, false),
+        ("v99.98.97+build-one", "ready", false, false),
+        ("v99.98.97foo", "ready", false, false),
+        ("v99.98.970", "ready", false, false),
+        ("v99.98.98", "ready", false, false),
     ] {
         fs::write(&calls, b"").unwrap();
         let output = gate_command("publish-release-assets.sh", &fixture.0, &[])
@@ -641,16 +681,10 @@ esac
                 "wrong repository: {call}"
             );
         }
-        if tag.contains("-rc.") {
-            assert!(calls.contains("--json isPrerelease,isDraft"), "{calls}");
-            assert!(
-                calls.contains(".isPrerelease == true and .isDraft == false"),
-                "{calls}"
-            );
-        }
         if create {
             assert!(calls.contains("--verify-tag"), "{calls}");
             assert!(calls.contains("--generate-notes"), "{calls}");
+            assert!(calls.contains("--title Exitbind v99.98.97"), "{calls}");
         }
     }
     for missing in ["GITHUB_REF_NAME", "GITHUB_REPOSITORY"] {
@@ -693,7 +727,7 @@ fn release_workflow_requires_all_native_targets_and_wsl_before_publish() {
         assert!(workflow.contains(&format!("runner: {runner}")));
         assert!(workflow.contains(&format!("host_arch: {arch}")));
         assert!(workflow.contains(&format!("target: {target}")));
-        assert!(workflow.contains(concat!("target/$", "{{ matrix.target }}/release/soulmate")));
+        assert!(workflow.contains(concat!("target/$", "{{ matrix.target }}/release/exitbind")));
     }
     assert!(workflow.contains("installer-smoke.sh"));
     assert!(workflow.contains("github.sha"));
@@ -701,9 +735,9 @@ fn release_workflow_requires_all_native_targets_and_wsl_before_publish() {
     assert!(workflow.contains("pattern: release-*"));
     assert!(workflow.contains("merge-multiple: true"));
     assert!(workflow.contains("aarch64-apple-darwin.bundle.json"));
-    assert!(workflow.contains("soulmate-aarch64-apple-darwin.tar.gz.sha256"));
-    assert!(workflow.contains("soulmate-x86_64-apple-darwin.tar.gz.sha256"));
-    assert!(workflow.contains("soulmate-x86_64-unknown-linux-gnu.tar.gz.sha256"));
+    assert!(workflow.contains("exitbind-aarch64-apple-darwin.tar.gz.sha256"));
+    assert!(workflow.contains("exitbind-x86_64-apple-darwin.tar.gz.sha256"));
+    assert!(workflow.contains("exitbind-x86_64-unknown-linux-gnu.tar.gz.sha256"));
     assert!(workflow.matches("--deny-self-hosted-runners").count() >= 3);
     assert!(workflow.matches("actions/attest@").count() >= 2);
     let publish = workflow
@@ -738,7 +772,7 @@ fn release_workflow_requires_all_native_targets_and_wsl_before_publish() {
     assert!(installed.contains("ref: ${{ github.ref }}"));
     assert!(installed.contains("Download same-workflow expected release artifact"));
     assert!(installed.contains("published-install-smoke.sh"));
-    assert!(installed.contains("SOULMATE_VERSION: ${{ github.ref_name }}"));
+    assert!(installed.contains("EXITBIND_VERSION: ${{ github.ref_name }}"));
 }
 
 #[cfg(unix)]
@@ -878,6 +912,11 @@ fn make_executable(path: &Path) {
 #[cfg(unix)]
 fn publisher_fixture(label: &str, tampered_target: Option<&str>) -> Fixture {
     let fixture = Fixture::new(&format!("publisher-{label}"));
+    fs::write(
+        fixture.0.join("Cargo.toml"),
+        "[package]\nname = \"fixture\"\nversion = \"99.0.0\"\n",
+    )
+    .unwrap();
     let evidence = fixture.0.join("release-evidence");
     let payloads = fixture.0.join("payloads");
     let bin = fixture.0.join("bin");
@@ -978,7 +1017,7 @@ esac
         "x86_64-apple-darwin",
     ];
     for target in targets {
-        let stem = format!("soulmate-{target}");
+        let stem = format!("exitbind-{target}");
         let payload_dir = payloads.join(target);
         fs::create_dir_all(&payload_dir).unwrap();
         let payload = payload_dir.join(&stem);
@@ -1107,7 +1146,7 @@ fn publisher_attestation_shim_rejects_changed_archive_and_wrong_provenance() {
     let valid = [
         "attestation",
         "verify",
-        "release-evidence/soulmate-x86_64-apple-darwin.tar.gz",
+        "release-evidence/exitbind-x86_64-apple-darwin.tar.gz",
         "--bundle",
         "release-evidence/x86_64-apple-darwin.bundle.json",
         "--repo",
@@ -1124,7 +1163,7 @@ fn publisher_attestation_shim_rejects_changed_archive_and_wrong_provenance() {
 
     let archive = fixture
         .0
-        .join("release-evidence/soulmate-x86_64-apple-darwin.tar.gz");
+        .join("release-evidence/exitbind-x86_64-apple-darwin.tar.gz");
     let original = fs::read(&archive).unwrap();
     let mut altered = original.clone();
     altered.extend_from_slice(b"altered after transfer");
@@ -1138,7 +1177,7 @@ fn publisher_attestation_shim_rejects_changed_archive_and_wrong_provenance() {
     let malformed = [
         "attestation",
         "verify",
-        "release-evidence/soulmate-x86_64-apple-darwin.tar.gz",
+        "release-evidence/exitbind-x86_64-apple-darwin.tar.gz",
         "--bundle",
         "release-evidence/x86_64-apple-darwin.bundle.json",
         "--repo",
@@ -1165,7 +1204,7 @@ fn publisher_rejects_tampered_transferred_raw_bytes_before_upload_for_each_targe
     )
     .unwrap();
     let provenance = release_workflow_step(&workflow, "Verify transferred archive provenance");
-    assert!(provenance.contains("cmp \"$payload_dir/soulmate-$target\""));
+    assert!(provenance.contains("cmp \"$payload_dir/exitbind-$target\""));
 
     let valid = publisher_fixture("valid", None);
     let output = run_publisher_steps(&workflow, &valid);

@@ -2,9 +2,9 @@ version = 1
 agents = ["claude", "codex", "grok"]
 
 [[plugins]]
-name = "soulmate"
-source = "veyndrasystems/soulmate"
-ref = "v0.16.0-rc.1"
+name = "exitbind"
+source = "veyndrasystems/exitbind"
+ref = "v0.17.0"
 path = "."
 targets = ["claude", "codex", "grok"]
 

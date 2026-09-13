@@ -51,14 +51,27 @@ const RETENTION_VALUES: &[&str] = &["task", "until-reviewed", "until-revoked", "
 const CROSS_CONTEXT_VALUES: &[&str] = &["none", "same-scope", "protocol-only", "synthetic-only"];
 
 pub fn load(path: Option<&str>) -> Result<Loaded, String> {
-    let requested = path.unwrap_or("soulmate.json");
+    let requested = path.unwrap_or_else(|| {
+        if crate::producer::exitbind_surface() {
+            "exitbind.json"
+        } else {
+            "soulmate.json"
+        }
+    });
     if requested.trim().is_empty() {
         return Err("configuration path must be a non-empty string".into());
     }
     let requested_path = absolute(Path::new(requested))?;
     let path = fs::canonicalize(requested_path).map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
-            format!("configuration not found: {requested}; run 'soulmate init' first")
+            format!(
+                "configuration not found: {requested}; run '{}' init first",
+                if crate::producer::exitbind_surface() {
+                    "exitbind"
+                } else {
+                    "soulmate"
+                }
+            )
         } else {
             error.to_string()
         }

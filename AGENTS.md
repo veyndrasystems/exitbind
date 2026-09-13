@@ -1,26 +1,34 @@
-# Instructions for coding agents contributing to Soulmate
+# Instructions for coding agents contributing to Exitbind
 
-This file is for external coding agents modifying the Soulmate repository. It
+This file is for external coding agents modifying the Exitbind repository. It
 is not part of the installed end-user workflow or a maintainer's personal agent
 configuration. Human contributors should start with [CONTRIBUTING.md](CONTRIBUTING.md);
 if they use a coding agent, these repository-specific rules apply to that agent.
 For setup in another project instead of changes here, follow the README's
-"Start with your existing agent" path and linked onboarding guide.
+"Give your lead one link" path and linked onboarding guide.
 
 Read `README.md` before changing the project.
 
 ## Purpose
 
-Soulmate is a lightweight companion for coding-agent profiles, bounded task
-briefs, task-scoped orchestration, scoped memory, and execution receipts. It is
-not a model runtime or a general autonomous-agent framework.
+Exitbind is a local acceptance boundary for material coding-agent work. It binds
+an exact result to check evidence, independent review, lead acceptance, and a
+verifiable receipt. It is not a model runtime or a general autonomous-agent
+framework.
 
 ## Public surface
 
-- Open public explanations with: “It verifies what you asked an agent to do
-  and what came back, in the same record.” Put protocol terminology after it.
-- Keep the default path legible as `init -> brief -> run -> check`; group other
-  commands as advanced without hiding limitations.
+When a user gives only `https://github.com/veyndrasystems/exitbind`, inspect this project and
+the host capabilities, decide whether the governed path fits, and ask before
+installation, project writes, permission changes, or another owner-controlled
+action. After authorization, operate selectively inside the existing
+conversation. Text guidance does not prove host or model compliance.
+
+- Open public explanations with: “A reported ‘done’ is not an accepted result.”
+  Put protocol terminology after it.
+- Keep the default path legible as `one link -> classify -> exact-result check
+  -> independent review -> lead acceptance -> verified receipt`; group commands
+  as operator details without hiding limitations.
 - Every public demo must run in CI and prove only the check it exercises.
   Current releases do not compare all product changes with the declared write
   boundary, so never claim or demonstrate that they do.
@@ -33,11 +41,11 @@ not a model runtime or a general autonomous-agent framework.
 
 ## Non-negotiable constraints
 
-- A normal coding-agent session must work when Soulmate is absent or disabled.
+- A normal coding-agent session must work when Exitbind is absent or disabled.
 - No daemon, cloud service, database, model call, telemetry, or background
   process may become required.
 - Advisory use must not wrap or delay normal development commands.
-- Strict enforcement must be explicit and limited to boundaries Soulmate
+- Strict enforcement must be explicit and limited to boundaries Exitbind
   actually controls. Never imply prompt text is an OS sandbox.
 - Persistent memory is opt-in, role-scoped, reviewable, expiring, and revocable.
 - Never create shared canonical memory or automatically ingest chat history.
@@ -69,7 +77,7 @@ small verification needed to prove behavior.
 ## Change discipline
 
 - Each file must have one explainable responsibility.
-- Keep the eventual CLI entry point as wiring and dispatch only.
+- Keep the CLI entry point as wiring and dispatch only.
 - `config::validate` owns configuration acceptance. New or modified code must
   use `Loaded::agent` and typed fields instead of indexing `Loaded.config`
   directly; retain the raw value and source bytes only for compatibility and

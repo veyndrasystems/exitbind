@@ -4,6 +4,13 @@ use serde_json::{json, Value};
 
 pub(crate) const CANONICAL_PATH: &str = "soulmate/harness/harness-manifest.json";
 const LEGACY_PATH: &str = "harness-manifest.json";
+pub(crate) fn canonical_path(loaded: &Loaded) -> &'static str {
+    if loaded.path.file_name().and_then(|name| name.to_str()) == Some("exitbind.json") {
+        "exitbind/harness/harness-manifest.json"
+    } else {
+        CANONICAL_PATH
+    }
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -69,9 +76,10 @@ enum Evidence {
 }
 
 pub(crate) fn load(loaded: &Loaded, requested: &str) -> Result<Value, String> {
-    if !supported_path(requested) {
+    if !supported_path(loaded, requested) {
+        let canonical = canonical_path(loaded);
         return Err(format!(
-            "harness manifest must be {CANONICAL_PATH} or the legacy path {LEGACY_PATH}"
+            "harness manifest must be {canonical} or the legacy path {LEGACY_PATH}"
         ));
     }
     crate::config::file(&loaded.control_root, requested)?;
@@ -93,7 +101,7 @@ pub(crate) fn verify(loaded: &Loaded, recorded: &Value) -> Result<bool, String> 
     let path = object
         .get("path")
         .and_then(Value::as_str)
-        .filter(|path| supported_path(path))
+        .filter(|path| supported_path(loaded, path))
         .ok_or("unsupported or malformed harness receipt")?;
 
     match crate::config::file(&loaded.control_root, path) {
@@ -115,7 +123,7 @@ pub(crate) fn raw_for_receipt(loaded: &Loaded, recorded: &Value) -> Result<Strin
     let path = object
         .get("path")
         .and_then(Value::as_str)
-        .filter(|path| supported_path(path))
+        .filter(|path| supported_path(loaded, path))
         .ok_or("unsupported or malformed harness receipt")?;
     let expected = object
         .get("manifestSha256")
@@ -168,8 +176,8 @@ fn recorded(manifest: &Manifest, bytes: &[u8], path: &str) -> Result<Value, Stri
     }))
 }
 
-fn supported_path(path: &str) -> bool {
-    matches!(path, CANONICAL_PATH | LEGACY_PATH)
+fn supported_path(loaded: &Loaded, path: &str) -> bool {
+    matches!(path, LEGACY_PATH) || path == canonical_path(loaded) || path == CANONICAL_PATH
 }
 
 fn validate(manifest: &Manifest, loaded: &Loaded) -> Result<(), String> {

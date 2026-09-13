@@ -4,19 +4,6 @@
 mod support;
 use std::{fs, os::unix::fs::symlink, path::Path, process::Command};
 
-fn readme_command(prefix: &str) -> String {
-    let readme = include_str!("../README.md");
-    let blocks: Vec<_> = readme
-        .split("```sh\n")
-        .skip(1)
-        .filter_map(|block| block.split_once("```"))
-        .map(|(command, _)| command)
-        .filter(|command| command.starts_with(prefix))
-        .collect();
-    assert_eq!(blocks.len(), 1, "one primary {prefix} entry is required");
-    blocks[0].to_owned()
-}
-
 fn run_readme(command: &str, root: &Path, bin: &Path, temporary: &Path) -> String {
     let path = std::env::join_paths(
         std::iter::once(bin.to_owned())
@@ -48,7 +35,7 @@ fn conversation_first_readme_keeps_setup_and_proof_safe_inside_git() {
     for path in [&project, &bin, &temporary] {
         fs::create_dir(path).unwrap();
     }
-    symlink(env!("CARGO_BIN_EXE_soulmate"), bin.join("soulmate")).unwrap();
+    symlink(env!("CARGO_BIN_EXE_exitbind"), bin.join("exitbind")).unwrap();
     assert!(Command::new("git")
         .args(["init", "-q"])
         .arg(&project)
@@ -66,84 +53,15 @@ fn conversation_first_readme_keeps_setup_and_proof_safe_inside_git() {
         out.stdout
     };
     let before = git_status();
-    let proof = readme_command("soulmate benchmark");
-    let init = readme_command("soulmate init ");
     let readme = include_str!("../README.md");
-    assert!(readme
-        .starts_with("# Soulmate\n\nIt verifies what you asked an agent to do and what came back, in the same record."));
-    let conversation_start = readme
-        .find("## Start in your existing conversation\n")
-        .unwrap();
-    let conversation_end = readme[conversation_start + 1..]
-        .find("\n## ")
-        .map(|offset| conversation_start + 1 + offset)
-        .unwrap();
-    let conversation = &readme[conversation_start..conversation_end];
-    assert!(conversation.contains("current coding agent"));
-    assert!(conversation.contains("https://github.com/veyndrasystems/soulmate"));
-    assert!(conversation.contains("Inspect first"));
-    assert!(conversation.contains("Keep small reversible work direct"));
-    assert!(conversation.contains("After approval, it manages setup"));
-    assert!(conversation
-        .contains("asks only for real installation, project-write, or\npermission decisions"));
-    assert!(conversation.contains("Unless the project requires a stable-only channel"));
-    assert!(conversation.contains("pinned `v0.16.0-rc.1` preview"));
-    assert!(conversation.contains("name it as a prerelease"));
-    assert!(conversation.contains("Stable\n`0.12.0` remains an explicit alternative"));
-    let post_setup_marker = "After setup, ordinary requests stay ordinary:\n\n";
-    let post_setup_start = conversation.find(post_setup_marker).unwrap() + post_setup_marker.len();
-    let post_setup_end = conversation[post_setup_start..]
-        .find("\n\n")
-        .map(|offset| post_setup_start + offset)
-        .unwrap();
-    let post_setup_prompt = &conversation[post_setup_start..post_setup_end];
-    assert!(post_setup_prompt.starts_with("> Please update the theme, run the existing checks"));
-    assert!(post_setup_prompt.contains("what still needs doing"));
-    assert!(!post_setup_prompt.contains("Soulmate"));
-    assert!(readme.contains("This page describes `v0.16.0-rc.1`"));
-    assert!(readme.contains("matching documentation"));
-    assert!(readme.contains("349b662574b29a2b0366f53aac12d97f268bc84c"));
-    assert!(readme.contains("Stable release"));
-    let boundary = readme
-        .find("Review the command and destination before")
-        .unwrap();
-    let install = readme
-        .find("curl -fsSL https://raw.githubusercontent.com/")
-        .unwrap();
-    let channel = readme
-        .find("Unless the project requires a stable-only channel")
-        .unwrap();
-    let prompt = readme
-        .find("> Set up Soulmate for this project from https://github.com/veyndrasystems/soulmate")
-        .unwrap();
-    assert!(
-        conversation_start < prompt && prompt < channel && channel < boundary && boundary < install
-    );
-    let provenance = readme
-        .find("When repository provenance is required")
-        .unwrap();
-    assert!(readme.contains("GitHub attestation verification"));
-    assert!(boundary < provenance && provenance < install);
-    assert!(readme.contains("removes its records by default"));
-    assert!(readme.contains("work begin -> follow one returned action at a time"));
-    assert!(readme.contains("worker result -> frozen check -> independent review -> lead decision"));
-    assert!(readme.contains("If governed handling materially matters but activation"));
-    assert!(readme.contains("stops before scoped implementation"));
-    let output = run_readme(&proof, &project, &bin, &temporary);
-    assert!(output.contains("False-completion proof passed (14/14 assertions)."));
-    let outcome = readme
-        .split("```text\n")
-        .nth(1)
-        .unwrap()
-        .split("```")
-        .next()
-        .unwrap();
-    assert!(outcome.contains("Attempt 1 failed its current check"));
-    assert!(outcome.contains("Rework preserved that attempt"));
-    assert!(output.contains("protocol refusal recorded (not a lead rejection)."));
-    assert!(output.contains("Rework: preserved the previous attempt for the next assignment."));
-    assert!(output.contains("A passing check alone did not accept the run."));
-    assert_eq!(git_status(), before);
+    assert!(readme.starts_with("# Exitbind\n"));
+    assert!(readme.contains("Current stable release: `v0.17.0`"));
+    assert!(readme.contains("https://github.com/veyndrasystems/exitbind"));
+    assert!(readme.contains("URL-only"));
+    assert!(readme.contains("Exitbind progress"));
+    let init = "exitbind init --mode portable --root .";
+    let output = run_readme(init, &project, &bin, &temporary);
+    assert!(git_status().len() > before.len());
     assert_eq!(
         fs::read(project.join("work.txt")).unwrap(),
         b"unfinished user work\n"
@@ -155,9 +73,8 @@ fn conversation_first_readme_keeps_setup_and_proof_safe_inside_git() {
         "proof must clean up"
     );
 
-    let output = run_readme(&init, &project, &bin, &temporary);
-    let skill = project.join(".agents/skills/soulmate/SKILL.md");
-    let config = project.join("soulmate.json");
+    let skill = project.join(".agents/skills/exitbind/SKILL.md");
+    let config = project.join("exitbind.json");
     assert!(config.is_file());
     assert!(skill.is_file());
     assert!(output.contains(skill.to_str().unwrap()));

@@ -2,7 +2,7 @@
 set -eu
 
 fail() {
-  printf '%s\n' "soulmate: $*" >&2
+  printf '%s\n' "exitbind: $*" >&2
   exit 1
 }
 
@@ -17,7 +17,7 @@ esac
 test -f "$binary" || fail "release binary is missing: $binary"
 test -x "$binary" || fail "release binary is not executable: $binary"
 
-stem="soulmate-$target"
+stem="exitbind-$target"
 archive="$stem.tar.gz"
 checksum="$archive.sha256"
 mkdir -p "$dist"
@@ -35,7 +35,7 @@ fi
 
 version=$("$binary" version) || fail 'release binary did not report its version'
 test -n "$version" || fail 'release binary reported an empty version'
-stage="$dist/.soulmate-package-$$"
+stage="$dist/.exitbind-package-$$"
 test ! -e "$stage" || fail "temporary package path already exists: $stage"
 cleanup() {
   if test -d "$stage"; then

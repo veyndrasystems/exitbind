@@ -49,7 +49,11 @@ pub fn run() -> Result<(), String> {
         }
         return Ok(());
     };
-    let portable = project.join("soulmate.json");
+    let portable = if crate::producer::exitbind_surface() {
+        project.join("exitbind.json")
+    } else {
+        project.join("soulmate.json")
+    };
     let config_path = if contained(&project, &portable)
         && portable.is_file()
         && contained_existing(&project, &portable)
@@ -191,8 +195,13 @@ fn format_agent_context(
         .unwrap_or(agent)
         .to_ascii_lowercase()
         .replace('-', "_");
+    let product = if crate::producer::exitbind_surface() {
+        "Exitbind"
+    } else {
+        "Soulmate"
+    };
     let mut lines = vec![
-        format!("Soulmate plan-only context for {agent} (role selected by native host event)."),
+        format!("{product} plan-only context for {agent} (role selected by native host event)."),
         format!("Agent ID: {}", safe_inline(agent)),
         format!("Native task name: {}", safe_inline(&native)),
         format!("Profile selected/presented: {}", safe_inline(&relative)),
@@ -246,7 +255,12 @@ fn session_summary(config: &Value) -> String {
             names.join(", ")
         })
         .unwrap_or_default();
-    bounded(format!("Soulmate plan-only project context.\nLead: {}\nNamed agents: {}\nWorkflows: {}\nPreserve the existing root host conversation; Soulmate context only augments it. Do not replace, reset, fork, or request compaction of it for role loading or handoff.\nKeep recent user corrections and rejected approaches with their rationale; refer frozen-run conflicts to the existing lead for explicit supersession. Native conversational recall is distinct from durable role memory.\nNo model was selected or launched; declarations are not an OS sandbox.", safe_inline(config["orchestration"]["lead"].as_str().unwrap_or("")), safe_inline(if agents.is_empty() { "none" } else { &agents }), safe_inline(if workflows.is_empty() { "none" } else { &workflows })))
+    let product = if crate::producer::exitbind_surface() {
+        "Exitbind"
+    } else {
+        "Soulmate"
+    };
+    bounded(format!("{product} plan-only project context.\nLead: {}\nNamed agents: {}\nWorkflows: {}\nPreserve the existing root host conversation; {product} context only augments it. Do not replace, reset, fork, or request compaction of it for role loading or handoff.\nKeep recent user corrections and rejected approaches with their rationale; refer frozen-run conflicts to the existing lead for explicit supersession. Native conversational recall is distinct from durable role memory.\nNo model was selected or launched; declarations are not an OS sandbox.", safe_inline(config["orchestration"]["lead"].as_str().unwrap_or("")), safe_inline(if agents.is_empty() { "none" } else { &agents }), safe_inline(if workflows.is_empty() { "none" } else { &workflows })))
 }
 
 fn bounded(value: String) -> String {

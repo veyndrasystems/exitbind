@@ -7,7 +7,7 @@ public GitHub releases endpoint without credentials and present additional
 context asking the root agent to mention a notice from a disposable,
 permission-restricted cache. Model surfacing is advisory and not proven by the
 hook. SubagentStart and opted-out invocations stay silent. The notice path
-never installs software. `soulmate update` is the explicit install boundary: it
+never installs software. `exitbind update` is the explicit install boundary: it
 accepts only a validated release tag, downloads the matching installer from the
 fixed project origin, reuses the installer's checksum and atomic replacement,
 and verifies the resulting binary. A failed update normally restores the prior
@@ -24,7 +24,7 @@ Report stale, historical, unavailable, and unverified layers explicitly;
 resolve the active host path before deletion, use supported host-specific
 refresh only, and treat reload/new-session evidence separately.
 
-In the `v0.16.0-rc.1` preview, `run observe-check` executes only the frozen command
+In the stable `v0.17.0` release, `run observe-check` executes only the frozen command
 in ProductRoot with inherited permissions and environment. It discards child
 stdout from the machine JSON stream, inherits stderr, records exit and signal
 results distinctly, and writes no check event when launch, timeout, or durable
@@ -33,7 +33,7 @@ lock, terminates its POSIX process group and reaps the command process on
 timeout, then revalidates the durable binding under the lock before append. The
 host/OS remains the sandbox and permission owner.
 
-Soulmate is a local protocol companion. It reads the configured project file
+Exitbind is a local protocol companion. It reads the configured project file
 and declared profiles, rejects escaping paths, and does not provide an OS
 sandbox, process isolation, model-compliance proof, or transcript scrubber.
 Explicit project-local hook handlers are advisory and fail open: malformed input
@@ -41,7 +41,7 @@ or unavailable project state must not block the host.
 
 The primary threat is an honest operator or agent making a publication,
 configuration, path, or resume mistake. A process that can rewrite all local
-evidence can recompute its unsigned hash chains; Soulmate does not defend local
+evidence can recompute its unsigned hash chains; Exitbind does not defend local
 state against that attacker.
 
 Local mode separates three trust domains: configuration and profiles remain
@@ -57,7 +57,7 @@ Memory-governance ledgers contain relative source/profile paths, hashes,
 authorization metadata, and timestamps, but not the referenced memory content.
 They are hash-linked evidence, not signed or tamper-proof audit logs. Keep them
 private when their metadata is sensitive, serialize concurrent writers, and do
-not treat `memoryRead` declarations as filesystem access control. Soulmate
+not treat `memoryRead` declarations as filesystem access control. Exitbind
 checks configured scope rights before appending transitions; the external
 runtime remains responsible for whether an actor can read the source file. Final
 ledger components are opened with no-follow append semantics and rechecked
@@ -67,11 +67,11 @@ open; no full transaction or host-wide lock is provided, so callers must
 serialize writers.
 
 Run ledgers keep the explicit handoff goal in private project-local
-`.soulmate/` state so a native host can resume it. `run start`, `run next`,
+`.exitbind/` state so a native host can resume it. `run start`, `run next`,
 `run submit`, and `run inspect` JSON is sensitive local operational output and
 is not redacted; `inspect` intentionally exposes the start event's goal. Run
 events store artifact paths and SHA-256 hashes, not artifact contents. Before
-resume or another submission, Soulmate checks each recorded artifact is still
+resume or another submission, Exitbind checks each recorded artifact is still
 a project-confined regular non-symlink file with the same hash; drift or
 deletion blocks without appending. `run inspect` proves only recorded chain and
 predecessor consistency and does not claim current artifact or configuration
@@ -92,8 +92,8 @@ deleted, or substituted prior artifact blocks resume and submission.
 ## Checked-result evidence
 
 Opt-in run-v3 ledgers bind a frozen check command and source category to the
-run; v3 supports caller-reported `run record-check` only. The `v0.16.0-rc.1`
-preview supports both reported `run record-check` and local `run observe-check`.
+run; v3 supports caller-reported `run record-check` only. The stable `v0.17.0`
+release supports both reported `run record-check` and local `run observe-check`.
 `run record-check` consumes a caller-supplied exit status for an exact
 current worker submission. It does not execute that command, authenticate the
 caller, or prove that the host ran it. Neither a reported zero exit code nor a
@@ -122,12 +122,12 @@ output directory. No model or network call is part of the scenario.
 ## Content authority and instruction-like data
 
 Byte integrity and instruction authority are separate properties. A valid hash
-proves only that Soulmate selected the recorded bytes. It does not make memory,
+proves only that Exitbind selected the recorded bytes. It does not make memory,
 an upstream artifact, a receipt, or a harness claim authoritative instructions.
 The native away prompt therefore presents content in this order and with these
 labels:
 
-1. current host/system constraints and the Soulmate execution contract;
+1. current host/system constraints and the Exitbind execution contract;
 2. the authoritative run context and assignment packet;
 3. the exact reviewed profile as subordinate role guidance;
 4. selected memory as context-only data;
@@ -142,7 +142,7 @@ explicit successor run.
 The assignment goal describes the task. It does not grant authority and cannot
 widen the declared boundary, even when it contains instruction-like text.
 
-Soulmate does not use a lexical prompt-injection scanner, delete suspicious
+Exitbind does not use a lexical prompt-injection scanner, delete suspicious
 phrases, or claim that labels enforce model behavior. The away prompt projects
 selected profile, memory, and manifest content as JSON strings so those bytes
 cannot create new Markdown section headings, while preserving a reversible
@@ -151,11 +151,11 @@ misinterpret or obey quoted text. Adversarial fixtures verify section order,
 structural quoting, and content preservation, not injection resistance or model
 compliance.
 
-New receipts and ledger events record the producing Soulmate version and, for
+New receipts and ledger events record the producing Exitbind version and, for
 release builds, the source commit. The producer field identifies the binary; it
 does not sign the evidence or prove that the recorded executable was trusted.
 
-An opt-in canonical `soulmate/harness/harness-manifest.json` (or the supported
+An opt-in canonical `exitbind/harness/harness-manifest.json` (or the supported
 legacy root `harness-manifest.json`) may bind portable project/session tokens,
 harness identity, and bounded skill, perspective, or Ponytail activation claims
 into a version-2 receipt. The manifest must be a no-follow regular file at one
@@ -171,13 +171,13 @@ or schema version bump. The constant `privacy` field remains in receipt v2 to
 preserve that frozen shape and states only that raw manifest values are omitted.
 `configured`, `presented`, `agent_declared`, and `hook_observed` name the claim
 source, not model compliance. `independently_verified` is an off-box verifier
-claim: Soulmate validates its format and binds the claim, but does not hash a
+claim: Exitbind validates its format and binds the claim, but does not hash a
 local artifact or authenticate the verifier. Its supplied `artifactSha256`
 value must be 64 lowercase hexadecimal characters.
 
 A run may opt into that existing receipt-v2 evidence with
 `--harness-receipt RECEIPT`. The receipt must be an existing no-follow regular
-file beneath StateRoot, and Soulmate binds its relative path and exact SHA-256
+file beneath StateRoot, and Exitbind binds its relative path and exact SHA-256
 in a v2 start event. `run next` and `run submit` revalidate the exact receipt,
 current configuration/profile bytes, and recorded ControlRoot manifest before
 returning or mutating a run. A receipt profile/runtime set that does not cover
@@ -191,7 +191,7 @@ head, and run-start configuration hash. It never edits the predecessor, copies
 its goal, or silently migrates configuration. A project-local exclusive claim
 seals the predecessor against later CLI submissions and prevents a different
 successor under the same claim. External replacement makes provenance
-inspection fail. Soulmate stores hashes, not a configuration snapshot or
+inspection fail. Exitbind stores hashes, not a configuration snapshot or
 global archive.
 
 Run mutation uses a project-local no-follow lock containing only a PID and
@@ -199,15 +199,16 @@ creation timestamp. Liveness and stale recovery are conservative and
 same-host: alive or permission-denied owners stay busy, PID reuse can appear
 busy, and malformed, replaced, or unverifiable locks are never force-unlocked.
 This is best-effort writer exclusion, not a full transaction or tamper-proof
-audit. The `.soulmate/.gitignore` keeps run/state/artifact contents out of
+audit. The `.exitbind/.gitignore` keeps run/state/artifact contents out of
 ordinary Git staging, but forced staging, other publication tools, and prior
 history remain possible. It does not prove that local or untracked data has
 been purged. The repository privacy gate checks its defined publication
 surface; it is not a general secret scanner or purge guarantee.
 
-The optional Coffee skill adds no configuration, command, installation, or
-execution authority. A native host must apply its own trust, invocation, and
-permission policy before using any suggested tool or skill.
+Readiness guidance is part of the lead surface and adds no configuration,
+command, installation, or execution authority. A native host must apply its
+own trust, invocation, and permission policy before using any suggested tool or
+skill.
 
 The optional Codex+tmux away adapter is a project-scoped host integration, not
 a core daemon, scheduler, provider client, distributed lease, or reboot
@@ -215,7 +216,7 @@ recovery service. It accepts only a currently pending `runtime.host=codex`
 assignment, forces approvals to `never`, and adds only the assignment's fresh
 StateRoot artifact parent as a writable root. An explicit `--sandbox-mode` is
 passed to Codex and recorded; without one, Codex inherits its resolved
-configuration and the private state records `unknown`. Soulmate records this
+configuration and the private state records `unknown`. Exitbind records this
 posture but does not enforce that Codex or the operating system obeyed it.
 It revalidates the exact assignment, profile, and selected memory source hashes
 immediately before launch and never selects a fallback. A task-specific tmux
@@ -228,7 +229,7 @@ that event is reported separately and never upgraded to completion.
 The adapter does not persist its prompt, assignment packet, manifest,
 transcript, raw environment, or a second JSONL history. Its mode-0700 StateRoot
 recovery directory may contain bounded identifiers, status, recorded sandbox
-posture, the native exit kind/code or termination signal, and Soulmate-generated
+posture, the native exit kind/code or termination signal, and Exitbind-generated
 bounded errors. Native stdout and stderr are
 discarded so an executable cannot echo supplied context into recovery state.
 Those files remain private local process evidence, not receipts or proof of
@@ -241,7 +242,7 @@ native launch. The spawned Codex process follows normal native project and
 global discovery, and the adapter does not upgrade configured, presented,
 agent-declared, hook-observed, or independently-verified claims.
 
-The runner is part of the single Soulmate binary and writes recovery state only
+The runner is part of the single Exitbind binary and writes recovery state only
 beneath the configured StateRoot. It does not use npm lifecycle scripts or
 mutate user-global host configuration. The project skill documents the command
 but contains no executable runner copy.
@@ -269,7 +270,7 @@ attacks but does not turn project-local authorization declarations into an OS
 sandbox or protect against an attacker who can mutate the process itself.
 
 The memory root and vectors derived by any future external retriever should be
-treated as sensitive project data. Soulmate does not currently generate
+treated as sensitive project data. Exitbind does not currently generate
 embeddings or call a retriever. An optional external ranker would not gain
 authorization authority: it may rank only already-eligible references, and its
 results must be revalidated before use. Do not send source text to an external
@@ -280,7 +281,7 @@ embedding provider without a separate, explicit project privacy decision.
 They reject malformed JSON, unexpected hook shapes, NUL-containing paths, and
 settings-directory or settings-file symlinks. Existing settings are merged
 rather than replaced; an exact
-Soulmate handler is idempotent, while a handler containing Soulmate's ownership
+Exitbind handler is idempotent, while a handler containing Exitbind's ownership
 marker but differing from the expected definition is a conflict and causes no
 mutation. The operation preflights all selected hosts before writing. Multiple
 files are serialized before sequential same-directory atomic renames, but there
@@ -293,20 +294,21 @@ retrying.
 Platform support and package-validation status are maintained in the
 [platform support details](docs/platform-support.md). That table distinguishes
 private native packaging evidence from public archive and installation
-verification; it is the authoritative platform matrix for this preview.
+verification; it is the authoritative platform matrix for this release.
 Optional hooks invoke
-`soulmate` by `PATH`, with a fail-open shell guard and a five-second native host
+`exitbind` by `PATH`, with a fail-open shell guard and a five-second native host
 timeout.
 `hooks apply` refuses to install when that executable is not currently
-resolvable on `PATH` or does not return Soulmate's expected hook protocol; host
+resolvable on `PATH` or does not return Exitbind's expected hook protocol; host
 launch environments must continue to expose the same command. It has no
 absolute install path, network,
-npx, daemon, dependency, or model call. The internal `soulmate hook-run`
+npx, daemon, dependency, or model call. The internal `exitbind hook-run`
 command reads only the host event stdin and emits bounded context for
 `SessionStart` and `SubagentStart`; it ignores other events and fails open.
 
-The `systems.veyndra.soulmate/` directory preserves host-specific manifests and
-hooks as compatibility resources only. Its presence does not activate a hook.
+The historical `systems.veyndra.soulmate/` directory preserves host-specific
+manifests and hooks as compatibility resources only. Its presence does not
+activate a hook.
 When a trusted, supported host consumes an explicitly installed resource,
 `SessionStart` emits the lead name plus configured agent and workflow names.
 `SubagentStart` emits the selected profile path, hash, text, and declared

@@ -98,16 +98,21 @@ fn print_checks(
     observed_capable: bool,
     targets: &[HumanCheckTarget],
 ) {
+    let product = if crate::producer::exitbind_surface() {
+        "Exitbind"
+    } else {
+        "Soulmate"
+    };
     match state {
         HumanCheckState::Unconfigured => {
             println!("Host-reported check: not configured (unchecked run)");
         }
         _ => {
             if targets.is_empty() || origin.is_none() {
-                println!("Host-reported check: not observed; not executed by Soulmate");
+                println!("Host-reported check: not observed; not executed by {product}");
             } else if !observed_capable {
                 println!(
-                    "Host-reported check: {}; not executed by Soulmate; origin={}",
+                    "Host-reported check: {}; not executed by {product}; origin={}",
                     check_state(*state),
                     optional(origin.as_deref(), "unknown")
                 );
@@ -122,7 +127,7 @@ fn print_checks(
                         .all(|acquisition| *acquisition == "reported")
                 {
                     println!(
-                        "Host-reported check: {}; not executed by Soulmate; acquisition is shown per target{}; origin={}",
+                        "Host-reported check: {}; not executed by {product}; acquisition is shown per target{}; origin={}",
                         check_state(*state),
                         missing_observe_guidance(*state),
                         optional(origin.as_deref(), "unknown")
@@ -147,7 +152,7 @@ fn print_checks(
                     );
                 } else if *state == HumanCheckState::NotObserved {
                     println!(
-                        "Host-reported check: not observed; not executed by Soulmate; local observe-check is available; origin={}",
+                        "Host-reported check: not observed; not executed by {product}; local observe-check is available; origin={}",
                         optional(origin.as_deref(), "unknown")
                     );
                 } else {

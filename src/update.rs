@@ -6,13 +6,53 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
-const API_URL: &str = "https://api.github.com/repos/veyndrasystems/soulmate/releases?per_page=20";
-const RAW_ORIGIN: &str = "https://raw.githubusercontent.com/veyndrasystems/soulmate/";
-const CACHE_NAME: &str = "soulmate/update.json";
-const MARKER_NAME: &str = "soulmate/update.lock";
 const MAX_RELEASE_BYTES: u64 = 1024 * 1024;
 const MAX_CACHE_BYTES: u64 = 8 * 1024;
 const CURRENT: &str = env!("CARGO_PKG_VERSION");
+
+fn exitbind_surface() -> bool {
+    crate::producer::exitbind_surface()
+}
+
+fn api_url() -> &'static str {
+    if exitbind_surface() {
+        "https://api.github.com/repos/veyndrasystems/exitbind/releases?per_page=20"
+    } else {
+        "https://api.github.com/repos/veyndrasystems/soulmate/releases?per_page=20"
+    }
+}
+
+fn raw_origin() -> &'static str {
+    if exitbind_surface() {
+        "https://raw.githubusercontent.com/veyndrasystems/exitbind/"
+    } else {
+        "https://raw.githubusercontent.com/veyndrasystems/soulmate/"
+    }
+}
+
+fn cache_name() -> &'static str {
+    if exitbind_surface() {
+        "exitbind/update.json"
+    } else {
+        "soulmate/update.json"
+    }
+}
+
+fn marker_name() -> &'static str {
+    if exitbind_surface() {
+        "exitbind/update.lock"
+    } else {
+        "soulmate/update.lock"
+    }
+}
+
+fn product_name() -> &'static str {
+    if exitbind_surface() {
+        "exitbind"
+    } else {
+        "soulmate"
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Pre {
@@ -175,7 +215,7 @@ fn cache_root_from(xdg: Option<PathBuf>, home: Option<PathBuf>) -> Option<PathBu
 
 fn paths() -> Option<(PathBuf, PathBuf)> {
     let root = cache_root()?;
-    Some((root.join(CACHE_NAME), root.join(MARKER_NAME)))
+    Some((root.join(cache_name()), root.join(marker_name())))
 }
 
 fn regular(path: &Path) -> bool {
@@ -381,7 +421,7 @@ fn curl(url: &str, output: &Path) -> Result<(), String> {
 
 fn discover(current: &Version) -> Result<Option<Version>, String> {
     let path = temp_file("releases").map_err(|e| e.to_string())?;
-    let result = curl(API_URL, &path).and_then(|_| {
+    let result = curl(api_url(), &path).and_then(|_| {
         let body = read_release_body(&path)?;
         parse_releases(&body, current)
     });
@@ -475,12 +515,15 @@ fn acquire_marker(marker: &Path) -> Option<File> {
 }
 
 pub fn session_context() -> Option<String> {
-    if std::env::var_os("SOULMATE_NO_UPDATE_CHECK").is_some() {
+    if std::env::var_os("EXITBIND_NO_UPDATE_CHECK")
+        .or_else(|| std::env::var_os("SOULMATE_NO_UPDATE_CHECK"))
+        .is_some()
+    {
         return None;
     }
     let current = Version::parse(&format!("v{CURRENT}"))?;
     let latest = cached_or_refresh()?;
-    (latest.cmp(&current).is_gt()).then(|| format!("Update available: current {} · latest {}. Tell the user once in the next natural response; do not run it without explicit authorization. Run `soulmate update` to install.", current.tag.trim_start_matches('v'), latest.tag.trim_start_matches('v')))
+    (latest.cmp(&current).is_gt()).then(|| format!("Update available: current {} · latest {}. Tell the user once in the next natural response; do not run it without explicit authorization. Run `{}` update to install.", current.tag.trim_start_matches('v'), latest.tag.trim_start_matches('v'), if exitbind_surface() { "exitbind" } else { "soulmate" }))
 }
 
 fn refresh_cache() -> Result<(), String> {
@@ -499,7 +542,10 @@ fn refresh_cache() -> Result<(), String> {
 }
 
 fn safe_prefix() -> Result<PathBuf, String> {
-    if let Some(prefix) = std::env::var_os("SOULMATE_INSTALL_PREFIX").filter(|v| !v.is_empty()) {
+    if let Some(prefix) = std::env::var_os("EXITBIND_INSTALL_PREFIX")
+        .or_else(|| std::env::var_os("SOULMATE_INSTALL_PREFIX"))
+        .filter(|v| !v.is_empty())
+    {
         let path = PathBuf::from(prefix);
         if !path.is_absolute()
             || path == Path::new("/")
@@ -507,9 +553,7 @@ fn safe_prefix() -> Result<PathBuf, String> {
                 .map(|m| m.file_type().is_dir())
                 .unwrap_or(false)
         {
-            return Err(
-                "SOULMATE_INSTALL_PREFIX must be an existing absolute non-root directory".into(),
-            );
+            return Err("install prefix must be an existing absolute non-root directory".into());
         }
         return Ok(path);
     }
@@ -566,11 +610,11 @@ pub fn explicit_update() -> Result<(), String> {
         return Ok(());
     };
     let installer = temp_file("installer").map_err(|e| e.to_string())?;
-    let url = format!("{RAW_ORIGIN}{}/install.sh", version.tag);
+    let url = format!("{}{}/install.sh", raw_origin(), version.tag);
     let download = curl(&url, &installer);
     if let Err(error) = download {
         let _ = fs::remove_file(&installer);
-        return Err(format!("soulmate update: {error}"));
+        return Err(format!("{} update: {error}", product_name()));
     }
     let prefix = match safe_prefix() {
         Ok(path) => path,
@@ -579,17 +623,26 @@ pub fn explicit_update() -> Result<(), String> {
             return Err(error);
         }
     };
-    let target = prefix.join("soulmate");
+    let product = if exitbind_surface() {
+        "exitbind"
+    } else {
+        "soulmate"
+    };
+    let target = prefix.join(product);
     if !regular(&target) {
         let _ = fs::remove_file(&installer);
-        return Err(
-            "soulmate update requires an existing regular binary to preserve rollback".into(),
-        );
+        return Err(format!(
+            "{} update requires an existing regular binary to preserve rollback",
+            product_name()
+        ));
     }
-    let backup = prefix.join(format!(".soulmate-old-{}", std::process::id()));
+    let backup = prefix.join(format!(".{product}-old-{}", std::process::id()));
     if fs::symlink_metadata(&backup).is_ok() {
         let _ = fs::remove_file(&installer);
-        return Err("soulmate update found a conflicting rollback path".into());
+        return Err(format!(
+            "{} update found a conflicting rollback path",
+            product_name()
+        ));
     }
     let backup_setup = (|| -> Result<(), String> {
         fs::copy(&target, &backup).map_err(|e| e.to_string())?;
@@ -604,23 +657,27 @@ pub fn explicit_update() -> Result<(), String> {
     if let Err(error) = backup_setup {
         let _ = fs::remove_file(&backup);
         let _ = fs::remove_file(&installer);
-        return Err(format!("soulmate update backup setup failed: {error}"));
+        return Err(format!(
+            "{} update backup setup failed: {error}",
+            product_name()
+        ));
     }
     let result = (|| {
         let output = Command::new("sh")
             .arg(&installer)
-            .env("SOULMATE_VERSION", &version.tag)
-            .env("SOULMATE_INSTALL_PREFIX", &prefix)
-            .env("SOULMATE_REPOSITORY", "veyndrasystems/soulmate")
+            .env("EXITBIND_VERSION", &version.tag)
+            .env("EXITBIND_INSTALL_PREFIX", &prefix)
+            .env("EXITBIND_REPOSITORY", "veyndrasystems/exitbind")
             .output()
             .map_err(|e| e.to_string())?;
         if !output.status.success() {
             return Err(format!("installer failed with status {}", output.status));
         }
-        if !regular(&target) {
-            return Err("installer did not produce a regular binary".into());
+        let installed = prefix.join("exitbind");
+        if !regular(&installed) {
+            return Err("installer did not produce a regular Exitbind binary".into());
         }
-        let checked = Command::new(&target)
+        let checked = Command::new(&installed)
             .arg("version")
             .output()
             .map_err(|e| e.to_string())?;
@@ -630,6 +687,16 @@ pub fn explicit_update() -> Result<(), String> {
         {
             return Err("installed binary reported an unexpected version".into());
         }
+        if !exitbind_surface() {
+            fs::copy(&installed, &target)
+                .map_err(|error| format!("compatibility binary replacement failed: {error}"))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&target, fs::Permissions::from_mode(0o755))
+                    .map_err(|error| error.to_string())?;
+            }
+        }
         Ok(())
     })();
     let _ = fs::remove_file(&installer);
@@ -637,15 +704,15 @@ pub fn explicit_update() -> Result<(), String> {
         Ok(()) => {
             let _ = fs::remove_file(backup);
             println!(
-                "Updated soulmate to {}.",
+                "Updated {product} to {}.",
                 version.tag.trim_start_matches('v')
             );
             Ok(())
         }
         Err(error) => match restore_backup(&backup, &target) {
-            Ok(()) => Err(format!("soulmate update: {error}")),
+            Ok(()) => Err(format!("{product} update: {error}")),
             Err(rollback) => Err(format!(
-                "soulmate update: {error}; rollback failed: {rollback}; retained backup '{}' for install target '{}'",
+                "{product} update: {error}; rollback failed: {rollback}; retained backup '{}' for install target '{}'",
                 backup.display(),
                 target.display()
             )),

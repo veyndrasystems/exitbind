@@ -1,7 +1,7 @@
 # Example local report
 
 This is the aggregate output from one generated `false-completion-v1` fixture.
-It contains synthetic evidence only. Reproduce it with `soulmate benchmark
+It contains synthetic evidence only. Reproduce it with `exitbind benchmark
 --output proof-local`, then read `proof-local/report.md`. Hashes and automated
 timings may vary across executions.
 

@@ -48,7 +48,7 @@ pub fn import(
     if next["agents"].get(name).is_some() {
         return Err(format!("agent '{name}' already exists"));
     }
-    let proposed = json!({"profile":format!("{}/{name}.md", crate::project_layout::CANONICAL_AGENTS_DIR),"purpose":purpose.trim(),"memoryForget":[],"observe":[],"write":[],"commands":[],"skills":[],"memoryRead":[],"memoryWrite":[],"memoryReview":[],"memoryPromote":[],"memoryReject":[],"memoryRevoke":[],"memoryExpire":[],"retention":"task","crossContext":"none"});
+    let proposed = json!({"profile":format!("{}/{name}.md", crate::project_layout::agents_dir()),"purpose":purpose.trim(),"memoryForget":[],"observe":[],"write":[],"commands":[],"skills":[],"memoryRead":[],"memoryWrite":[],"memoryReview":[],"memoryPromote":[],"memoryReject":[],"memoryRevoke":[],"memoryExpire":[],"retention":"task","crossContext":"none"});
     next["agents"][name] = proposed;
     if has_native_collision(&next, name) || !config::validate(&next).is_empty() {
         return Err("proposed configuration validation failed".into());
@@ -56,7 +56,7 @@ pub fn import(
 
     let project = fs::canonicalize(&l.control_root).map_err(|e| e.to_string())?;
     let config_path = regular(&l.path, "configuration")?;
-    let profiles_dir = project.join(crate::project_layout::CANONICAL_AGENTS_DIR);
+    let profiles_dir = project.join(crate::project_layout::agents_dir());
     ensure_dir(&project, &profiles_dir)?;
     let destination = profiles_dir.join(format!("{name}.md"));
     ensure_absent(&destination, "profile target")?;
@@ -110,7 +110,7 @@ pub fn import(
     result?;
     Ok(format!(
         "Imported profile {name} -> {}/{name}.md\n",
-        crate::project_layout::CANONICAL_AGENTS_DIR
+        crate::project_layout::agents_dir()
     ))
 }
 

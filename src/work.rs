@@ -5,10 +5,16 @@ use serde_json::{json, Value};
 use std::fs::{self, OpenOptions};
 use std::io::Read;
 
-const RUNS_DIR: &str = ".soulmate/runs";
-const ARTIFACTS_DIR: &str = ".soulmate/artifacts";
 const WORK_PREFIX: &str = "smw_";
 const ASSIGNMENT_PREFIX: &str = "sma_";
+
+fn runs_dir() -> String {
+    format!("{}/runs", crate::project_layout::state_namespace())
+}
+
+fn artifacts_dir() -> String {
+    format!("{}/artifacts", crate::project_layout::state_namespace())
+}
 
 pub(crate) fn begin(
     loaded: &Loaded,
@@ -28,7 +34,7 @@ pub(crate) fn begin(
         std::process::id(),
         timestamp_nanos()
     ));
-    let ledger = format!("{RUNS_DIR}/work-{token}.jsonl");
+    let ledger = format!("{}/work-{token}.jsonl", runs_dir());
     let _started = run::start_with_policy(
         loaded,
         workflow,
@@ -98,7 +104,7 @@ pub(crate) fn check(loaded: &Loaded, work: &str) -> Result<Value, String> {
 }
 
 pub(crate) fn resume(loaded: &Loaded) -> Result<Value, String> {
-    let directory = loaded.state_root.join(RUNS_DIR);
+    let directory = loaded.state_root.join(runs_dir());
     let entries = match fs::read_dir(directory) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return none_result(),
@@ -122,31 +128,34 @@ pub(crate) fn resume(loaded: &Loaded) -> Result<Value, String> {
         if !info.is_file() || !valid_token(token) {
             continue;
         }
-        let ledger = format!("{RUNS_DIR}/{name}");
+        let ledger = format!("{}/{}", runs_dir(), name);
         let view = run::inspect(loaded, &ledger)?;
         if view["status"] == "running" {
+            let progress = run::next(loaded, &ledger)?["progress"].clone();
             candidates.push((
                 format!("{WORK_PREFIX}{token}"),
                 view["workflow"].clone(),
                 view["goal"].clone(),
                 ledger,
+                progress,
             ));
         }
     }
     match candidates.len() {
         0 => none_result(),
         1 => {
-            let (work, _, _, ledger) = candidates.pop().expect("one candidate exists");
+            let (work, _, _, ledger, _) = candidates.pop().expect("one candidate exists");
             Ok(
                 json!({"status": "resumed", "work": work.clone(), "next": next_for(loaded, &work, &ledger)?}),
             )
         }
         _ => Ok(json!({
             "status": "ambiguous",
-            "works": candidates.into_iter().map(|(work, workflow, goal, _)| json!({
+            "works": candidates.into_iter().map(|(work, workflow, goal, _, progress)| json!({
                 "work": work,
                 "workflow": workflow,
-                "goal": goal
+                "goal": goal,
+                "progress": progress
             })).collect::<Vec<_>>()
         })),
     }
@@ -158,11 +167,12 @@ fn none_result() -> Result<Value, String> {
 
 fn next_for(loaded: &Loaded, work: &str, ledger: &str) -> Result<Value, String> {
     let value = run::next(loaded, ledger)?;
+    let progress = value["progress"].clone();
     if value["status"] != "running" {
-        return Ok(json!({"action": "done", "status": value["status"]}));
+        return Ok(json!({"action": "done", "status": value["status"], "progress": progress}));
     }
     if current_check_target(loaded, ledger)?.is_some() {
-        return Ok(json!({"action": "check"}));
+        return Ok(json!({"action": "check", "progress": progress}));
     }
     let assignment = value["assignments"]
         .as_array()
@@ -194,7 +204,8 @@ fn next_for(loaded: &Loaded, work: &str, ledger: &str) -> Result<Value, String> 
         "assignment": assignment_handle,
         "role": assignment["role"],
         "agent": assignment["agent"],
-        "packet": packet
+        "packet": packet,
+        "progress": progress
     });
     if role == "lead" {
         result["outcomes"] = if value["currentStage"] == 1 {
@@ -211,53 +222,39 @@ fn current_check_target(loaded: &Loaded, ledger: &str) -> Result<Option<String>,
     if state["status"] != "running" {
         return Ok(None);
     }
-    let Some(target) = current_worker_target(&state) else {
-        return Ok(None);
-    };
     let status = run::status(loaded, ledger)?;
-    let observed = status["checks"]["targets"].as_array().and_then(|targets| {
-        targets
-            .iter()
-            .find(|item| item["targetEventSha256"] == target)
-    });
-    match observed.and_then(|item| item["status"].as_str()) {
-        Some("passed") | Some("failed") => Ok(None),
-        _ => Ok(Some(target)),
-    }
-}
-
-fn current_worker_target(state: &Value) -> Option<String> {
-    state["submissions"].as_array().and_then(|items| {
-        items
-            .iter()
-            .rev()
-            .find(|item| item["role"] == "worker" && item["attempt"] == state["attempt"])
-            .and_then(|item| item["eventSha256"].as_str())
-            .map(str::to_owned)
-    })
+    Ok(status["checks"]["targets"].as_array().and_then(|targets| {
+        targets.iter().find_map(|item| {
+            (item["status"] == "missing")
+                .then(|| item["targetEventSha256"].as_str().map(str::to_owned))
+                .flatten()
+        })
+    }))
 }
 
 fn check_summary(loaded: &Loaded, ledger: &str) -> Result<Option<Value>, String> {
-    let state = run::inspect(loaded, ledger)?;
-    let Some(target) = current_worker_target(&state) else {
+    let status = run::status(loaded, ledger)?;
+    let Some(targets) = status["checks"]["targets"].as_array() else {
         return Ok(None);
     };
-    let status = run::status(loaded, ledger)?;
-    let Some(item) = status["checks"]["targets"].as_array().and_then(|targets| {
+    if targets.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(Value::Array(
         targets
             .iter()
-            .find(|item| item["targetEventSha256"] == target)
-    }) else {
-        return Ok(None);
-    };
-    let mut summary = json!({"status": item["status"]});
-    if let Some(value) = item.get("acquisition") {
-        summary["acquisition"] = value.clone();
-    }
-    if let Some(value) = item.get("result") {
-        summary["result"] = value.clone();
-    }
-    Ok(Some(summary))
+            .map(|item| {
+                let mut summary = json!({"status": item["status"]});
+                if let Some(value) = item.get("acquisition") {
+                    summary["acquisition"] = value.clone();
+                }
+                if let Some(value) = item.get("result") {
+                    summary["result"] = value.clone();
+                }
+                summary
+            })
+            .collect(),
+    )))
 }
 
 fn resolve(loaded: &Loaded, work: &str) -> Result<String, String> {
@@ -265,7 +262,7 @@ fn resolve(loaded: &Loaded, work: &str) -> Result<String, String> {
         .strip_prefix(WORK_PREFIX)
         .filter(|token| valid_token(token))
         .ok_or("work handle is invalid")?;
-    let ledger = format!("{RUNS_DIR}/work-{token}.jsonl");
+    let ledger = format!("{}/work-{token}.jsonl", runs_dir());
     let path = loaded.state_root.join(&ledger);
     let info = fs::symlink_metadata(path).map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
@@ -286,7 +283,7 @@ fn write_artifact(
     assignment: &str,
     bytes: &[u8],
 ) -> Result<String, String> {
-    let directory = loaded.state_root.join(ARTIFACTS_DIR);
+    let directory = loaded.state_root.join(artifacts_dir());
     crate::managed_files::ensure_managed_directory(&loaded.state_root, &directory)?;
     let suffix = &hash::bytes(bytes)[..16];
     let name = format!("{work}-{assignment}-{suffix}.md");
@@ -297,7 +294,7 @@ fn write_artifact(
         .open(path)
         .map_err(|error| error.to_string())?;
     std::io::Write::write_all(&mut file, bytes).map_err(|error| error.to_string())?;
-    Ok(format!("{ARTIFACTS_DIR}/{name}"))
+    Ok(format!("{}/{}", artifacts_dir(), name))
 }
 
 fn assignment_handle(work: &str, assignment: &Value) -> Result<String, String> {

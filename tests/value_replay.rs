@@ -24,6 +24,14 @@ fn invoke(root: &Path, arguments: &[&str]) -> Output {
         .expect("soulmate binary should start")
 }
 
+fn invoke_exitbind(root: &Path, arguments: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_exitbind"))
+        .current_dir(root)
+        .args(arguments)
+        .output()
+        .expect("exitbind binary should start")
+}
+
 fn invoke_owned(root: &Path, arguments: Vec<String>) -> Output {
     Command::new(env!("CARGO_BIN_EXE_soulmate"))
         .current_dir(root)
@@ -370,6 +378,88 @@ fn frozen_v3_fixture_inspects_successfully() {
     assert_eq!(value["status"], "running");
     assert_eq!(value["events"].as_array().unwrap().len(), 1);
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn producer_identity_preserves_v1_history_and_accepts_v5_exitbind() {
+    let root = project("value-replay-v1-producer");
+    let ledger = ".soulmate/runs/v1.jsonl";
+    let started = invoke(
+        &root,
+        &[
+            "run",
+            "start",
+            "change",
+            "--goal",
+            "historical producer",
+            "--ledger",
+            ledger,
+            "--config",
+            "soulmate.json",
+        ],
+    );
+    assert!(started.status.success(), "{}", text(&started));
+    let historical = read_events(&root, ledger);
+    assert_eq!(historical[0]["version"], 1);
+    assert_eq!(historical[0]["producer"]["name"], "soulmate");
+
+    let soulmate_ledger = ".soulmate/runs/v1-soulmate.jsonl";
+    write_events(&root, soulmate_ledger, &historical);
+    let accepted = inspect(&root, soulmate_ledger);
+    assert!(accepted.status.success(), "{}", text(&accepted));
+
+    let mut producerless = historical.clone();
+    producerless[0]
+        .as_object_mut()
+        .expect("historical start should be an object")
+        .remove("producer");
+    rehash_chain(&mut producerless);
+    let producerless_ledger = ".soulmate/runs/v1-producerless.jsonl";
+    write_events(&root, producerless_ledger, &producerless);
+    let accepted = inspect(&root, producerless_ledger);
+    assert!(accepted.status.success(), "{}", text(&accepted));
+
+    let mut relabeled = historical;
+    relabeled[0]["producer"]["name"] = json!("exitbind");
+    reject_replayed(
+        &root,
+        ".soulmate/runs/v1-exitbind.jsonl",
+        relabeled,
+        &["invalid producer"],
+    );
+
+    let v5_root = project("value-replay-v5-producer");
+    let v5_ledger = ".soulmate/runs/v5.jsonl";
+    let v5_started = invoke_exitbind(
+        &v5_root,
+        &[
+            "run",
+            "start",
+            "change",
+            "--goal",
+            "current producer",
+            "--ledger",
+            v5_ledger,
+            "--check-command",
+            CHECK,
+            "--proof-origin",
+            "synthetic",
+            "--config",
+            "soulmate.json",
+        ],
+    );
+    assert!(v5_started.status.success(), "{}", text(&v5_started));
+    let v5_events = read_events(&v5_root, v5_ledger);
+    assert_eq!(v5_events[0]["version"], 5);
+    assert_eq!(v5_events[0]["producer"]["name"], "exitbind");
+    let v5_inspected = invoke_exitbind(
+        &v5_root,
+        &["run", "inspect", v5_ledger, "--config", "soulmate.json"],
+    );
+    assert!(v5_inspected.status.success(), "{}", text(&v5_inspected));
+
+    fs::remove_dir_all(root).unwrap();
+    fs::remove_dir_all(v5_root).unwrap();
 }
 
 fn append_forged_acceptance(root: &Path, events: &mut Vec<Value>, name: &str) {

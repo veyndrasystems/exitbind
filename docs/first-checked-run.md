@@ -8,18 +8,23 @@ fresh attempt. The [authority boundary](../REFERENCE.md#authority-boundary)
 defines who owns each action; [SECURITY.md](../SECURITY.md) defines what the
 local evidence can establish.
 
+New checked runs use run-event format 5. Exitbind binds each submission, check,
+review, and acceptance result to the run's exact Accepted Subject; a stale
+subject is refused. Historical v1–v4 ledgers remain readable under their
+original semantics.
+
 ## Try the complete example
 
-Use the pinned preview binary from the README and the matching source checkout
+Use the pinned stable binary from the README and the matching source checkout
 for the script. Running it needs only the binary and standard POSIX shell tools,
 with no jq, Python, model, or account:
 
 ```sh
-SOULMATE_BIN=soulmate ./scripts/demo-checked-work.sh
+EXITBIND_BIN=exitbind ./scripts/demo-checked-work.sh
 ```
 
 Alternatively, build this checkout with Rust/Cargo and set
-`SOULMATE_BIN=target/debug/soulmate`. The older stable 0.12.0 binary lacks the
+`EXITBIND_BIN=target/debug/exitbind`. The older stable 0.12.0 binary lacks the
 `--event-id` and `--text` options used by this example; use its JSON workflow
 for host-managed tasks or upgrade the binary before trying this script.
 
@@ -48,16 +53,16 @@ check honestly or that a host conversation survived. The example is gated in
 [CI](../.github/workflows/ci.yml).
 
 For the separate installed-binary self-test and an exportable synthetic evidence
-bundle, use `soulmate benchmark` and read the
+bundle, use `exitbind benchmark` and read the
 [proof methodology](value-proof-methodology.md).
 
 ## Use your own project
 
-Use the installed preview binary for the commands below. If you built from
+Use the installed stable binary for the commands below. If you built from
 source instead, add its absolute binary directory to PATH before changing directory:
 
 ```sh
-soulmate version
+exitbind version
 printf 'Project directory: '
 IFS= read -r project_dir
 cd "$project_dir"
@@ -66,7 +71,7 @@ cd "$project_dir"
 Choose a small authorized change and the real command your project already uses
 to check it. You or your host will execute that command; review it before
 entering it. Git must be available when working inside a Git checkout. Use your
-normal version-control checkpoint or backup for product changes. Soulmate
+normal version-control checkpoint or backup for product changes. Exitbind
 records results; it does not undo product edits.
 
 The following uses a new portable project configuration and the starter
@@ -75,9 +80,9 @@ configured, keep that configuration and follow its assignments instead. For
 control/state outside the checkout, follow [local mode](onboarding.md#choose-the-storage-mode).
 
 Raw goals, command strings, result documents, and ledgers are private operational
-data. Portable initialization creates `.soulmate/` with a Git ignore rule;
+data. Portable initialization creates `.exitbind/` with a Git ignore rule;
 review what you share, since an ignore rule is not access control. Before any
-real agent work, review `soulmate.json` and the generated profiles. The starter
+real agent work, review `exitbind.json` and the generated profiles. The starter
 has empty observe/write/command declarations: set the exact authorized limits
 and the host's own permissions before freezing the run. A goal does not grant
 permission. Follow [review the starter setup once](onboarding.md#review-the-starter-setup-once)
@@ -85,7 +90,7 @@ for the fields and host mapping needed here; no protocol reference is required
 to prepare this first task.
 
 ```sh
-soulmate init --mode portable
+exitbind init --mode portable
 ```
 
 After reviewing the configuration, enter the actual goal and check. Continue in
@@ -102,13 +107,13 @@ printf 'Exact project check command: '
 IFS= read -r check_command
 test -n "$goal"
 test -n "$check_command"
-ledger=.soulmate/runs/run.jsonl
+ledger=.exitbind/runs/run.jsonl
 attempt=1
-soulmate brief worker --task "$goal" --config soulmate.json
-soulmate run start change --goal "$goal" --check-command "$check_command" \
-  --ledger "$ledger" --config soulmate.json
-soulmate check --config soulmate.json
-soulmate run next "$ledger" --text --config soulmate.json
+exitbind brief worker --task "$goal" --config exitbind.json
+exitbind run start change --goal "$goal" --check-command "$check_command" \
+  --ledger "$ledger" --config exitbind.json
+exitbind check --config exitbind.json
+exitbind run next "$ledger" --text --config exitbind.json
 ```
 
 `run start` prints a checked-run notice on stderr while keeping JSON stdout.
@@ -126,11 +131,11 @@ they do not invent the document or its decision.
 ```sh
 printf 'Path to the lead scope document: '
 IFS= read -r scope_source
-cat < "$scope_source" > .soulmate/artifacts/first-scope.md
-soulmate run submit lead "$ledger" --outcome scoped \
-  --artifact .soulmate/artifacts/first-scope.md --artifact-root state \
-  --config soulmate.json
-soulmate run next "$ledger" --text --config soulmate.json
+cat < "$scope_source" > .exitbind/artifacts/first-scope.md
+exitbind run submit lead "$ledger" --outcome scoped \
+  --artifact .exitbind/artifacts/first-scope.md --artifact-root state \
+  --config exitbind.json
+exitbind run next "$ledger" --text --config exitbind.json
 ```
 
 Have the native host perform the worker's bounded assignment. It must read the
@@ -149,23 +154,23 @@ in a later attempt while its earlier result snapshots stay intact.
 ```sh
 printf 'Path to the completed worker result document: '
 IFS= read -r worker_source
-worker_artifact=".soulmate/artifacts/first-worker-$attempt.md"
+worker_artifact=".exitbind/artifacts/first-worker-$attempt.md"
 cat < "$worker_source" > "$worker_artifact"
-worker_event=$(soulmate run submit worker "$ledger" --outcome completed \
+worker_event=$(exitbind run submit worker "$ledger" --outcome completed \
   --artifact "$worker_artifact" --artifact-root state --event-id \
-  --config soulmate.json)
+  --config exitbind.json)
 check_exit=0
 sh -c "$check_command" || check_exit=$?
-soulmate run record-check "$ledger" --target "$worker_event" \
+exitbind run record-check "$ledger" --target "$worker_event" \
   --check-command "$check_command" --exit-code "$check_exit" \
-  --config soulmate.json
-soulmate run status "$ledger" --config soulmate.json
-soulmate run next "$ledger" --text --config soulmate.json
+  --config exitbind.json
+exitbind run status "$ledger" --config exitbind.json
+exitbind run next "$ledger" --text --config exitbind.json
 ```
 
 This historical v3 procedure captures the successful submission's event ID **before** executing
 the frozen command. A failed submission stops this sequence. The command text
-and `--target` are explicit; Soulmate does not select the latest submission or
+and `--target` are explicit; Exitbind does not select the latest submission or
 execute the command. Every current worker needs its own qualifying report.
 Never supply zero when the check failed or could not run.
 
@@ -180,11 +185,11 @@ printf 'Path to the reviewer document: '
 IFS= read -r review_source
 printf 'Reviewer outcome: '
 IFS= read -r review_outcome
-review_artifact=".soulmate/artifacts/first-review-$attempt.md"
+review_artifact=".exitbind/artifacts/first-review-$attempt.md"
 cat < "$review_source" > "$review_artifact"
-soulmate run submit reviewer "$ledger" --outcome "$review_outcome" \
-  --artifact "$review_artifact" --artifact-root state --config soulmate.json
-soulmate run next "$ledger" --text --config soulmate.json
+exitbind run submit reviewer "$ledger" --outcome "$review_outcome" \
+  --artifact "$review_artifact" --artifact-root state --config exitbind.json
+exitbind run next "$ledger" --text --config exitbind.json
 ```
 
 Follow the returned assignment. Reviewer rework returns to a fresh worker
@@ -199,15 +204,15 @@ printf 'Path to the lead decision document: '
 IFS= read -r decision_source
 printf 'Lead outcome: '
 IFS= read -r lead_outcome
-decision_artifact=".soulmate/artifacts/first-decision-$attempt.md"
+decision_artifact=".exitbind/artifacts/first-decision-$attempt.md"
 cat < "$decision_source" > "$decision_artifact"
-if soulmate run submit lead "$ledger" --outcome "$lead_outcome" \
-  --artifact "$decision_artifact" --artifact-root state --config soulmate.json
+if exitbind run submit lead "$ledger" --outcome "$lead_outcome" \
+  --artifact "$decision_artifact" --artifact-root state --config exitbind.json
 then
-  soulmate run status "$ledger" --config soulmate.json
+  exitbind run status "$ledger" --config exitbind.json
 else
   printf 'Decision refused; inspect the run and resolve the recorded cause.\n' >&2
-  soulmate run status "$ledger" --config soulmate.json
+  exitbind run status "$ledger" --config exitbind.json
 fi
 ```
 
@@ -218,12 +223,12 @@ attempt:
 ```sh
 printf 'Path to the lead rework document: '
 IFS= read -r rework_source
-rework_artifact=".soulmate/artifacts/first-rework-$attempt.md"
+rework_artifact=".exitbind/artifacts/first-rework-$attempt.md"
 cat < "$rework_source" > "$rework_artifact"
-soulmate run submit lead "$ledger" --outcome rework \
-  --artifact "$rework_artifact" --artifact-root state --config soulmate.json
+exitbind run submit lead "$ledger" --outcome rework \
+  --artifact "$rework_artifact" --artifact-root state --config exitbind.json
 attempt=$((attempt + 1))
-soulmate run next "$ledger" --text --config soulmate.json
+exitbind run next "$ledger" --text --config exitbind.json
 ```
 
 Repeat step 2 after the worker performs the repair, then obtain a fresh review
@@ -236,10 +241,10 @@ pending worker. Do not increment twice.
 ### 4. Inspect or resume from another shell
 
 ```sh
-soulmate run status .soulmate/runs/run.jsonl --config soulmate.json
-soulmate run next .soulmate/runs/run.jsonl --text --config soulmate.json
-soulmate run inspect .soulmate/runs/run.jsonl --config soulmate.json
-soulmate run report .soulmate/runs/run.jsonl --config soulmate.json
+exitbind run status .exitbind/runs/run.jsonl --config exitbind.json
+exitbind run next .exitbind/runs/run.jsonl --text --config exitbind.json
+exitbind run inspect .exitbind/runs/run.jsonl --config exitbind.json
+exitbind run report .exitbind/runs/run.jsonl --config exitbind.json
 ```
 
 Run these with the same compatible binary in the project directory. `next
@@ -259,8 +264,8 @@ recorded bytes. Intentional governing-input changes need explicit
 [supersession](../REFERENCE.md#run-and-recovery) where permitted; accepted and
 rejected predecessors remain final.
 
-For the `v0.16.0-rc.1` preview, `run observe-check` can execute only the frozen
-command locally while v3 ledgers remain report-only. After updating the binary, refresh owned project skills with `soulmate init
+For the stable `v0.17.0` release, `run observe-check` can execute only the frozen
+command locally while v3 ledgers remain report-only. After updating the binary, refresh owned project skills with `exitbind init
 --refresh-skills --root .` and reload the host. Keep a binary compatible with
 run-event format 3 for checked-ledger rollback. Remove optional hooks before
 removing the binary; [removal](../REFERENCE.md#removal) leaves local records and

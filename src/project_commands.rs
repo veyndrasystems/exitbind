@@ -21,6 +21,9 @@ pub(crate) fn init(arguments: &Arguments) -> Result<(), String> {
         ],
     )?;
     args::assert_positionals("init", arguments, 0)?;
+    if crate::project_layout::exitbind_surface() && arguments.flags.contains_key("with-coffee") {
+        return Err("--with-coffee is retired; Exitbind readiness guidance is built into the Exitbind skill".into());
+    }
     let root = arguments
         .options
         .get("root")
@@ -28,8 +31,13 @@ pub(crate) fn init(arguments: &Arguments) -> Result<(), String> {
         .unwrap_or(".");
     if arguments.flags.contains_key("refresh-skills") {
         let statuses = onboarding::refresh(root, arguments.flags.contains_key("with-coffee"))?;
+        let product = if crate::project_layout::exitbind_surface() {
+            "Exitbind"
+        } else {
+            "Soulmate"
+        };
         println!(
-            "Refreshed project skills with Soulmate {}:\n{}",
+            "Refreshed project skills with {product} {}:\n{}",
             project_skills::package_version(),
             statuses
                 .iter()
@@ -71,18 +79,23 @@ pub(crate) fn init(arguments: &Arguments) -> Result<(), String> {
         path.to_str()
             .ok_or("configuration path is not valid UTF-8")?,
     );
+    let skill_name = if crate::project_layout::exitbind_surface() {
+        "exitbind"
+    } else {
+        "soulmate"
+    };
     let skill = path
         .parent()
         .ok_or("configuration path has no parent")?
-        .join(".agents/skills/soulmate/SKILL.md");
+        .join(format!(".agents/skills/{skill_name}/SKILL.md"));
     let quoted_skill =
         crate::presentation::shell_quote(skill.to_str().ok_or("skill path is not valid UTF-8")?);
     println!(
-        "Created {}\nPrepared project skills for Codex and Claude: Soulmate{coffee}.\n\nBounded setup facts for your existing root agent:\n  Configuration: {quoted_config}\n  Soulmate skill: {quoted_skill}\n  Review the declared task boundary and the host's native worker/reviewer mapping before project-scoped work.\n  Setup did not install host software or change host permissions; ask before any future installation or permission change.\n  Setup does not start agents or grant host permissions.\n\nIllustrative request in this conversation:\n  Inspect the configuration and skill above, review my task and actual check command, then decide whether the governed path is appropriate. Keep ordinary reversible work direct and report what still needs doing before acceptance.\n\nCLI reference (replace YOUR_TEST_COMMAND with a real project check command):\n  soulmate brief worker --task \"Describe the change you want to make\" --config={quoted_config}\n  soulmate work begin change --goal \"Describe the bounded change\" --check-command \"YOUR_TEST_COMMAND\" --config={quoted_config}\n  soulmate check --config={quoted_config}\nThe host executes the frozen check command and reports its actual result. 'soulmate check' validates configuration, profiles, and declared boundaries; it does not run project tests.",
+        "Created {}\nPrepared project skills for Codex and Claude: {skill_name}{coffee}.\n\nBounded setup facts for your existing root agent:\n  Configuration: {quoted_config}\n  {skill_name} skill: {quoted_skill}\n  Review the declared task boundary and the host's native worker/reviewer mapping before project-scoped work.\n  Setup did not install host software or change host permissions; ask before any future installation or permission change.\n  Setup does not start agents or grant host permissions.\n\nIllustrative request in this conversation:\n  Inspect the configuration and skill above, review my task and actual check command, then decide whether the governed path is appropriate. Keep ordinary reversible work direct and report what still needs doing before acceptance.\n\nCLI reference (replace YOUR_TEST_COMMAND with a real project check command):\n  {skill_name} brief worker --task \"Describe the change you want to make\" --config={quoted_config}\n  {skill_name} work begin change --goal \"Describe the bounded change\" --check-command \"YOUR_TEST_COMMAND\" --config={quoted_config}\n  {skill_name} check --config={quoted_config}\nThe host executes the frozen check command and reports its actual result. '{skill_name} check' validates configuration, profiles, and declared boundaries; it does not run project tests.",
         path.display()
     );
     println!(
-        "Installation: no host software installation performed; Soulmate is available in this invoking binary.\nProject-scoped selective preference: confirmed in the projected Soulmate skill. At the start of each material task, classify once; for a governed trigger that materially matters, select Soulmate automatically and run high-level soulmate work begin before any scoped implementation or mutation, proceeding only after it succeeds and returns a work handle and next action. Tiny, obvious, reversible work stays direct without activation.\nProjection/materialization: confirmed for Codex and Claude project skill paths (exact embedded bytes).\nFresh-session discovery: unverified (no host probe was performed).\nActive-session discovery: unverified (setup does not inspect or refresh an already-loaded session).\nSelection: not performed by setup; the lead decides task by task.\nActivation: not performed by setup; only a successful soulmate work begin result creates machine-confirmed governed state.\nProjected bytes and setup text do not prove session discovery, future compliance, selection, or activation."
+        "Installation: no host software installation performed; {skill_name} is available in this invoking binary.\nProject-scoped selective preference: confirmed in the projected {skill_name} skill. At the start of each material task, classify once; for a governed trigger that materially matters, select {skill_name} automatically and run high-level {skill_name} work begin before any scoped implementation or mutation, proceeding only after it succeeds and returns a work handle and next action. Tiny, obvious, reversible work stays direct without activation.\nProjection/materialization: confirmed for Codex and Claude project skill paths (exact embedded bytes).\nFresh-session discovery: unverified (no host probe was performed).\nActive-session discovery: unverified (setup does not inspect or refresh an already-loaded session).\nSelection: not performed by setup; the lead decides task by task.\nActivation: not performed by setup; only a successful {skill_name} work begin result creates machine-confirmed governed state.\nProjected bytes and setup text do not prove session discovery, future compliance, selection, or activation."
     );
     if empty_starter {
         println!("warning: {EMPTY_STARTER_DETAIL}");
@@ -171,7 +184,14 @@ pub(crate) fn check(loaded: &config::Loaded, arguments: &Arguments) -> Result<()
             .map_err(|error| error.to_string())?
         );
     } else {
-        println!("Soulmate configuration is valid ({mode} mode).");
+        println!(
+            "{} configuration is valid ({mode} mode).",
+            if crate::project_layout::exitbind_surface() {
+                "Exitbind"
+            } else {
+                "Soulmate"
+            }
+        );
         for warning in warnings {
             if warning["classification"] == "empty_starter_boundary" {
                 println!(
@@ -204,8 +224,13 @@ fn is_empty_starter(
 
 fn print_skill_diagnostics(observations: &[project_skills::SkillObservation]) {
     let binary = invoking_binary();
+    let product = if crate::project_layout::exitbind_surface() {
+        "Exitbind"
+    } else {
+        "Soulmate"
+    };
     println!(
-        "Managed skill diagnostics (Soulmate package {}; invoking binary {}):",
+        "Managed skill diagnostics ({product} package {}; invoking binary {}):",
         project_skills::package_version(),
         binary.display
     );
@@ -228,11 +253,16 @@ fn print_skill_diagnostics(observations: &[project_skills::SkillObservation]) {
 
 fn print_skill_warnings(observations: &[project_skills::SkillObservation], control_root: &Path) {
     let binary = invoking_binary();
+    let product = if crate::project_layout::exitbind_surface() {
+        "Exitbind"
+    } else {
+        "Soulmate"
+    };
     let refresh = refresh_instruction(&binary, control_root);
     for observation in observations {
         let warning = match observation.state {
             project_skills::SkillObservationState::ManagedDifferent => Some(format!(
-                "warning: {} managed skill {} differs from this binary's embedded skill (Soulmate package {}; invoking binary {}; embedded SHA256 {}; observed SHA256 {}). Inspect the invoking binary version/path; {} Install the intended release if needed.",
+                "warning: {} managed skill {} differs from this binary's embedded skill ({product} package {}; invoking binary {}; embedded SHA256 {}; observed SHA256 {}). Inspect the invoking binary version/path; {} Install the intended release if needed.",
                 observation.skill,
                 observation.path,
                 project_skills::package_version(),
@@ -244,7 +274,7 @@ fn print_skill_warnings(observations: &[project_skills::SkillObservation], contr
             project_skills::SkillObservationState::Unsafe
             | project_skills::SkillObservationState::Unreadable
             | project_skills::SkillObservationState::Unsupported => Some(format!(
-                "warning: {} skill {} could not be safely inspected ({}; Soulmate package {}; invoking binary {}; embedded SHA256 {}; observed SHA256 unknown). Inspect the invoking binary version/path, repair the skill path, then {} Install the intended release if needed.",
+                "warning: {} skill {} could not be safely inspected ({}; {product} package {}; invoking binary {}; embedded SHA256 {}; observed SHA256 unknown). Inspect the invoking binary version/path, repair the skill path, then {} Install the intended release if needed.",
                 observation.skill,
                 observation.path,
                 skill_state_label(observation.state),

@@ -3,7 +3,7 @@
 It verifies what you asked an agent to do and what came back, in the same
 record.
 
-In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.
+In checked runs, Exitbind refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.
 
 ## What the proof establishes
 
@@ -16,14 +16,14 @@ available. A successful rerun and reviewer approval still require a separate
 lead acceptance.
 
 The baseline also retains the check's nonzero exit status. A competent host or
-person can stop there without Soulmate. The comparison tests whether that result
+person can stop there without Exitbind. The comparison tests whether that result
 is part of the local acceptance record and checked when acceptance is requested;
 it does not assume that Git or a host conceals failed tests.
 
 Run the installed binary's disposable, token-free scenario:
 
 ```sh
-soulmate benchmark
+exitbind benchmark
 ```
 
 For a complete checked-work journey on a tiny product input, use the separate
@@ -31,13 +31,13 @@ For a complete checked-work journey on a tiny product input, use the separate
 
 ```sh
 cargo build --locked
-SOULMATE_BIN=target/debug/soulmate ./scripts/demo-checked-work.sh
+EXITBIND_BIN=target/debug/exitbind ./scripts/demo-checked-work.sh
 ```
 
 This shell fixture observes actual failed and passing check exits and scripts
 the worker, reviewer, and lead documents. It retrieves the rework assignment in
 a fresh CLI process and checks that the earlier worker document remains intact.
-It uses the preview `--event-id`/`--text` conveniences, removes its temporary
+It uses the stable `--event-id`/`--text` conveniences, removes its temporary
 project, and produces no proof export. The installed benchmark and registered
 scenario retain their existing claims and formats. Neither example is an
 external-user experiment or demonstrates conversation preservation.
@@ -46,7 +46,7 @@ From source, the reproducible validation path for the registered proof is:
 
 ```sh
 cargo test --locked
-SOULMATE_BIN=target/debug/soulmate ./scripts/run-value-proof-suite.sh
+EXITBIND_BIN=target/debug/exitbind ./scripts/run-value-proof-suite.sh
 ```
 
 For a change to proof schemas, compare with the existing base commit as well:
@@ -66,7 +66,7 @@ To retain the generated local proof instead of only displaying it, use a new
 output directory:
 
 ```sh
-soulmate benchmark --output proof-local
+exitbind benchmark --output proof-local
 ```
 
 The fixture is synthetic. It invokes no model, uses no account, and does not
@@ -83,7 +83,7 @@ original host transcript.
 | Reviewed | Reviewer outcome in the current attempt | A reviewer recorded its decision in the workflow. |
 | Accepted | Configured lead's final `accepted` submission | The run's canonical authority recorded acceptance after the enabled guards passed. |
 
-The v4 preview can locally observe the frozen command or consume a caller
+The historical v4 reader can locally observe the frozen command or consume a caller
 report; v3 `run record-check` is caller-reported-only and never runs the command.
 Neither the producer field nor a SHA-256 authenticates a caller or proves that a
 reported command actually executed. The synthetic harness
@@ -123,12 +123,13 @@ participants provide those observations.
 
 ## Compatibility and broader claims
 
-Historical checked runs use run-event version 3 and are reported-only;
-the `v0.16.0-rc.1` preview adds v4 observed-or-reported results. Existing v1/v2 ledgers keep their previous
-format and remain inspectable. Old binaries do not gain v3 support by
-changing the package number; retain a compatible binary for v3 evidence and do
-not rewrite a v3 ledger as an older format. Public schema snapshots and frozen
-fixtures pin that boundary.
+Historical checked runs use run-event versions 1–4 and retain their original
+producer identity and semantics. The stable `v0.17.0` release writes v5 records
+that bind an Accepted Subject to each result and evidence record, while readers
+retain v1–v4 support. A package-number change does not rewrite old ledgers;
+retain a compatible reader for historical evidence and do not relabel it as a
+new Exitbind write. Public schema snapshots and frozen fixtures pin that
+boundary.
 
 One deterministic scenario supports one scoped claim. Real dogfooding across
 projects, novice onboarding studies, parallel-worker stale-base handling,

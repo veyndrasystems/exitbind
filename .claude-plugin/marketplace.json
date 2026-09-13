@@ -1,0 +1,13 @@
+{
+  "name": "veyndra-systems",
+  "owner": {
+    "name": "Veyndra Systems",
+    "url": "https://github.com/veyndrasystems"
+  },
+  "plugins": [
+    {
+      "name": "exitbind",
+      "source": "./plugins/exitbind"
+    }
+  ]
+}

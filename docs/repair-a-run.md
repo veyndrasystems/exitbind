@@ -6,15 +6,15 @@ event IDs. Start with these read-only views, using your actual configuration
 and ledger paths:
 
 ```sh
-soulmate run status LEDGER --config CONFIG
-soulmate run next LEDGER --text --config CONFIG
-soulmate run inspect LEDGER --config CONFIG
+exitbind run status LEDGER --config CONFIG
+exitbind run next LEDGER --text --config CONFIG
+exitbind run inspect LEDGER --config CONFIG
 ```
 
 `status` checks current artifact/configuration conditions. `next` returns the
 validated pending assignment. `inspect` checks recorded history; it does not
 establish that current files still match. The readable `--text` form requires
-the preview binary; older stable hosts can read the default JSON packet.
+the stable binary; older stable hosts can read the default JSON packet.
 
 | What happened | Next action |
 | --- | --- |

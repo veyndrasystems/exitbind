@@ -1,5 +1,5 @@
 #!/bin/sh
 set -u
 
-binary=${SOULMATE_BIN:-soulmate}
+binary=${EXITBIND_BIN:-${SOULMATE_BIN:-soulmate}}
 exec "$binary" benchmark --json "$@"

@@ -3,11 +3,11 @@
   "claims": [
     {
       "id": "CLAIM-CHECKED-ACCEPTANCE-001",
-      "statement": "In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.",
+      "statement": "In checked runs, Exitbind refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.",
       "scope": "Opt-in local run acceptance with a frozen command and exact current worker submission identity.",
       "evidenceLevel": "deterministic_fixture",
       "limitations": {
-        "caller_reported_checks": "The host executes the command. Soulmate validates the reported result and its binding; it does not authenticate command execution.",
+        "caller_reported_checks": "The host executes the command. Exitbind validates the reported result and its binding; it does not authenticate command execution.",
         "synthetic_not_frequency": "Seeded scenarios establish the exercised behavior, not recurring user losses, avoided harm, or human time saved.",
         "local_authority": "Configured lead authority and local ledger checks are not OS authentication or protection against rewriting all local evidence.",
         "artifact_scope": "Recorded artifact hashes do not establish the state of every project file or the execution environment."
@@ -21,7 +21,7 @@
     {
       "id": "false-completion-v1",
       "origin": "synthetic",
-      "command": "SOULMATE_BIN=target/debug/soulmate ./scripts/run-value-proof-suite.sh",
+      "command": "EXITBIND_BIN=target/debug/exitbind ./scripts/run-value-proof-suite.sh",
       "executable": "scripts/run-value-proof-suite.sh",
       "expected": "proof/scenarios/false-completion-v1/expected.json"
     }

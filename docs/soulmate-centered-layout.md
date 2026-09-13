@@ -1,9 +1,11 @@
-# Soulmate-centered directory contract
+# Historical Soulmate-centered directory contract
 
-Status: accepted target architecture. New canonical profiles follow this
-layout. Existing projects and persisted evidence are not rewritten implicitly.
+Status: historical compatibility architecture accepted during the Soulmate
+era. Fresh Exitbind projects use the
+[Exitbind-centered layout](exitbind-centered-layout.md). Existing Soulmate
+projects and persisted evidence are not rewritten implicitly.
 
-## Final ownership model
+## Historical ownership model
 
 ```text
 PROJECT/
@@ -38,9 +40,9 @@ The directories express authority, not containment:
 Public control material and private evidence must not be mixed. Hash-verified
 state remains evidence and does not gain instruction authority from its path.
 
-## Compatibility
+## Exitbind compatibility
 
-New `soulmate init` projects and `soulmate profile import` operations use
+Legacy `soulmate init` projects and `soulmate profile import` operations use
 `soulmate/agents/`. Existing configurations may continue to name
 `.agents/profiles/` or another confined ControlRoot-relative profile path.
 Soulmate never moves those files implicitly or reinterprets old ledger and

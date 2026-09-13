@@ -3,7 +3,7 @@ use crate::hash;
 use serde_json::{json, Value};
 
 const BRIEF_NOTICE: &str = "This is a plan-only brief. Runtime fields are requested bindings, not a model invocation or OS sandbox. The lead remains responsible for scope and final acceptance.";
-const PLAN_NOTICE: &str = "This is a deterministic plan. maxParallel is declared coordination intent only; Soulmate launches nothing. Runtime fields are requested bindings only; Soulmate did not select, invoke, or grant runtime authority to any model.";
+const PLAN_NOTICE: &str = "This is a deterministic plan. maxParallel is declared coordination intent only; the native host launches nothing here. Runtime fields are requested bindings only; no model was selected, invoked, or granted runtime authority by this plan.";
 
 pub fn brief(loaded: &Loaded, agent_name: &str, task: &str) -> Result<Value, String> {
     let agent = loaded
@@ -113,7 +113,7 @@ pub fn render(envelope: &Value) -> String {
     let runtime = &envelope["runtime"];
     let mut rendered = format!(
         concat!(
-            "# Soulmate task envelope: {}\n\n",
+            "# {} task envelope: {}\n\n",
             "Display name: {}\nNative task name: {}\nPurpose: {}\nTask: {}\n",
             "Profile: {}\nProfile SHA-256: {}\n",
             "Requested runtime: host={}, model={}, reasoning effort={}, fallback={}\n\n",
@@ -124,6 +124,11 @@ pub fn render(envelope: &Value) -> String {
             "- Memory expire: {}\n- Memory forget: {}\n",
             "- Retention: {}\n- Cross-context: {}\n\n> {}\n\n"
         ),
+        if crate::producer::exitbind_surface() {
+            "Exitbind"
+        } else {
+            "Soulmate"
+        },
         string(&envelope["agent"]),
         string(&envelope["displayName"]),
         string(&envelope["nativeTaskName"]),

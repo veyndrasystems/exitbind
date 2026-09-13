@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schema/run-boundary.schema.json",
+  "$schema": "../../schema/exitbind-run-boundary.schema.json",
   "version": 1,
   "agents": {
     "implementation_worker": {

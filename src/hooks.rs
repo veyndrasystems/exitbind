@@ -9,6 +9,22 @@ const EVENTS: [&str; 2] = ["SessionStart", "SubagentStart"];
 const CODEX_CONTEXT_LIMIT: i64 = 4096;
 const HOOK_TIMEOUT_SECONDS: i64 = 5;
 
+fn hook_command() -> &'static str {
+    if crate::producer::exitbind_surface() {
+        "command -v exitbind >/dev/null 2>&1 && exitbind hook-run || true"
+    } else {
+        HOOK_COMMAND
+    }
+}
+
+fn hook_marker() -> &'static str {
+    if crate::producer::exitbind_surface() {
+        "exitbind hook-run"
+    } else {
+        MARKER
+    }
+}
+
 pub fn manage(action: &str, hosts: &str, root: &str) -> Result<Vec<Value>, String> {
     if !matches!(action, "plan" | "status" | "apply" | "remove") {
         return Err(format!("unsupported hooks action '{action}'"));
@@ -36,8 +52,14 @@ pub fn manage(action: &str, hosts: &str, root: &str) -> Result<Vec<Value>, Strin
             .map(|state| {
                 let mut value = result(action, &state);
                 value["blocked"] = Value::Bool(true);
-                value["reason"] =
-                    Value::String("Soulmate ownership conflict; no file was changed".into());
+                value["reason"] = Value::String(format!(
+                    "{} ownership conflict; no file was changed",
+                    if crate::producer::exitbind_surface() {
+                        "Exitbind"
+                    } else {
+                        "Soulmate"
+                    }
+                ));
                 value
             })
             .collect());
@@ -162,7 +184,9 @@ fn inspect(
                 } else if handler_object
                     .get("command")
                     .and_then(Value::as_str)
-                    .is_some_and(|command| command.contains(MARKER))
+                    .is_some_and(|command| {
+                        command.contains(MARKER) || command.contains(hook_marker())
+                    })
                 {
                     conflicts.push(format!("{event}[{group_index}].hooks[{handler_index}]"));
                 }
@@ -223,7 +247,14 @@ fn result(action: &str, state: &State) -> Value {
     let mut actions = Vec::new();
     if action == "plan" {
         if !state.conflicts.is_empty() {
-            actions.push("stop: Soulmate ownership conflict; no write planned".into());
+            actions.push(format!(
+                "stop: {} ownership conflict; no write planned",
+                if crate::producer::exitbind_surface() {
+                    "Exitbind"
+                } else {
+                    "Soulmate"
+                }
+            ));
         } else {
             for (i, event) in EVENTS.iter().enumerate() {
                 actions.push(if state.exact[i] > 0 {
@@ -253,9 +284,9 @@ fn unsupported(action: &str, host: &str, root: &str) -> Result<Value, String> {
 
 fn expected(host: &str) -> Value {
     if host == "codex" {
-        json!({"type":"command","command":HOOK_COMMAND,"timeout":HOOK_TIMEOUT_SECONDS,"additionalContextLimit":CODEX_CONTEXT_LIMIT})
+        json!({"type":"command","command":hook_command(),"timeout":HOOK_TIMEOUT_SECONDS,"additionalContextLimit":CODEX_CONTEXT_LIMIT})
     } else {
-        json!({"type":"command","command":HOOK_COMMAND,"timeout":HOOK_TIMEOUT_SECONDS})
+        json!({"type":"command","command":hook_command(),"timeout":HOOK_TIMEOUT_SECONDS})
     }
 }
 fn same_record(left: &Map<String, Value>, right: &Map<String, Value>) -> bool {

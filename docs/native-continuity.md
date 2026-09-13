@@ -3,7 +3,7 @@
 It verifies what you asked an agent to do and what came back, in the same
 record.
 
-Soulmate's host guidance preserves the existing root conversation. Loading a
+Exitbind's host guidance preserves the existing root conversation. Loading a
 role, rendering a brief, resuming a run, refreshing a skill, or looking up
 governed memory adds bounded context. These operations do not authorize a new
 root conversation, a reset, a fork, or unnecessary compaction. The host retains
@@ -19,7 +19,7 @@ predecessor.
 
 ## Conversation and durable memory
 
-Native conversational recall comes from the host's conversation. Soulmate's
+Native conversational recall comes from the host's conversation. Exitbind's
 opt-in durable memory has separate role rights, review and lifecycle rules. A
 ledger, profile or recalled memory item is bounded evidence, not a substitute
 conversation. This guidance adds no transcript capture, reconstruction, chat
@@ -33,15 +33,15 @@ handoff; it is not a way to restore or replace an attended root conversation.
 ## Install the guidance
 
 New portable and local projects receive the bundled skill through the existing
-`soulmate init` path. After upgrading the binary, update an existing project's
+`exitbind init` path. After upgrading the binary, update an existing project's
 managed copies explicitly:
 
 ```sh
-soulmate init --refresh-skills --root CONTROL_ROOT
+exitbind init --refresh-skills --root CONTROL_ROOT
 ```
 
 Replace `CONTROL_ROOT` with the directory containing the project's
-`soulmate.json`: the project directory in portable mode, or its separate control
+`exitbind.json`: the project directory in portable mode, or its separate control
 directory in local mode. Refresh preserves the existing ownership checks and
 does not edit native host configuration or session files. Refreshing a skill
 does not itself authorize replacing the active conversation; host discovery
@@ -62,7 +62,7 @@ never receive update notices.
 Executable regression tests check output shape and size, silent events,
 preserved disposable host-file sentinels, host-command launch traps, and the
 bytes installed or refreshed into portable/local skill copies. These checks
-establish Soulmate's emitted guidance and the local behavior exercised. They
+establish Exitbind's emitted guidance and the local behavior exercised. They
 do not establish model compliance, long-session or post-compaction recall, a
 historical root cause, or a repair for model-capacity warnings or host transport
 failures.
@@ -88,5 +88,5 @@ the original continuity symptom. Keep capacity failures separate from recall
 outcomes and wait for the selected model rather than changing it mid-comparison.
 A client-specific difference warrants investigation; it does not establish
 that Orca or another terminal client caused a historical failure. This is an
-optional manual procedure, not a Soulmate diagnostic collector or a claim that
+optional manual procedure, not an Exitbind diagnostic collector or a claim that
 the comparison has been performed.

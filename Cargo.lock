@@ -97,6 +97,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "exitbind"
+version = "0.17.0"
+dependencies = [
+ "chrono",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -305,17 +316,6 @@ name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
-
-[[package]]
-name = "soulmate"
-version = "0.16.0-rc.1"
-dependencies = [
- "chrono",
- "libc",
- "serde",
- "serde_json",
- "sha2",
-]
 
 [[package]]
 name = "syn"

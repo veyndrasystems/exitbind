@@ -1,4 +1,4 @@
-name: Release binaries
+name: Exitbind stable release
 
 on:
   push:
@@ -48,35 +48,35 @@ jobs:
         run: |
           proof_base=$(git rev-parse --verify HEAD^)
           VALUE_PROOF_BASE="$proof_base" cargo test --locked
-      - name: Keep the public refusal demo truthful
-        run: SOULMATE_BIN=target/debug/soulmate ./scripts/demo-refusal.sh
+      - name: Keep the Exitbind refusal demo truthful
+        run: EXITBIND_BIN=target/debug/exitbind ./scripts/demo-refusal.sh
       - run: cargo audit
       - name: Exercise native tmux handoff
         run: |
           command -v tmux >/dev/null || (sudo apt-get update && sudo apt-get install -y tmux)
           cargo test --locked --test away_native real_tmux_child_presents_bound_evidence_without_persisting_the_prompt -- --ignored --exact
-      - name: Build native Linux release candidate
+      - name: Build native Linux stable release
         env:
-          SOULMATE_BUILD_COMMIT: ${{ github.sha }}
+          EXITBIND_BUILD_COMMIT: ${{ github.sha }}
         run: cargo build --release --locked
       - name: Exercise first-user path without language toolchains
-        run: ./scripts/onboarding-smoke.sh "$GITHUB_WORKSPACE/target/release/soulmate" "$GITHUB_WORKSPACE/skills/soulmate/SKILL.md"
+        run: ./scripts/onboarding-smoke.sh "$GITHUB_WORKSPACE/target/release/exitbind" "$GITHUB_WORKSPACE/skills/exitbind/SKILL.md"
       - name: Verify tag matches the binary
-        run: test "v$(target/release/soulmate version)" = "$GITHUB_REF_NAME"
-      - name: Package native Linux release candidate
-        run: ./scripts/package-release.sh x86_64-unknown-linux-gnu target/release/soulmate dist
+        run: test "v$(target/release/exitbind version)" = "$GITHUB_REF_NAME"
+      - name: Package native Linux stable release
+        run: ./scripts/package-release.sh x86_64-unknown-linux-gnu target/release/exitbind dist
       - name: Exercise packaged Linux installer
         run: ./scripts/installer-smoke.sh dist x86_64-unknown-linux-gnu
       - name: Attest packaged archive provenance
         id: attest
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: dist/soulmate-x86_64-unknown-linux-gnu.tar.gz
+          subject-path: dist/exitbind-x86_64-unknown-linux-gnu.tar.gz
       - name: Verify packaged archive provenance
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh attestation verify dist/soulmate-x86_64-unknown-linux-gnu.tar.gz \
+          gh attestation verify dist/exitbind-x86_64-unknown-linux-gnu.tar.gz \
             --bundle "${{ steps.attest.outputs.bundle-path }}" \
             --repo "$GITHUB_REPOSITORY" \
             --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
@@ -90,17 +90,17 @@ jobs:
         with:
           name: release-x86_64-unknown-linux-gnu-${{ github.sha }}
           path: |
-            dist/soulmate-x86_64-unknown-linux-gnu
-            dist/soulmate-x86_64-unknown-linux-gnu.tar.gz
-            dist/soulmate-x86_64-unknown-linux-gnu.tar.gz.sha256
+            dist/exitbind-x86_64-unknown-linux-gnu
+            dist/exitbind-x86_64-unknown-linux-gnu.tar.gz
+            dist/exitbind-x86_64-unknown-linux-gnu.tar.gz.sha256
             dist/x86_64-unknown-linux-gnu.bundle.json
           if-no-files-found: error
           retention-days: 1
-      - name: Upload Linux release candidate for WSL
+      - name: Upload Linux stable release for WSL
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: soulmate-linux-x86_64-${{ github.sha }}
-          path: target/release/soulmate
+          name: exitbind-linux-x86_64-${{ github.sha }}
+          path: target/release/exitbind
           if-no-files-found: error
           retention-days: 1
 
@@ -142,28 +142,28 @@ jobs:
         run: |
           proof_base=$(git rev-parse --verify HEAD^)
           VALUE_PROOF_BASE="$proof_base" cargo test --locked
-      - name: Reproduce the checked-acceptance claim
-        run: SOULMATE_BIN=target/debug/soulmate ./scripts/run-value-proof-suite.sh
-      - name: Build native macOS release candidate
+      - name: Reproduce the Exitbind checked-acceptance claim
+        run: EXITBIND_BIN=target/debug/exitbind ./scripts/run-value-proof-suite.sh
+      - name: Build native macOS stable release
         env:
-          SOULMATE_BUILD_COMMIT: ${{ github.sha }}
+          EXITBIND_BUILD_COMMIT: ${{ github.sha }}
         run: cargo build --release --locked --target "${{ matrix.target }}"
       - name: Verify tag matches the binary
-        run: test "v$(target/${{ matrix.target }}/release/soulmate version)" = "$GITHUB_REF_NAME"
-      - name: Package native macOS release candidate
-        run: ./scripts/package-release.sh "${{ matrix.target }}" "target/${{ matrix.target }}/release/soulmate" dist
+        run: test "v$(target/${{ matrix.target }}/release/exitbind version)" = "$GITHUB_REF_NAME"
+      - name: Package native macOS stable release
+        run: ./scripts/package-release.sh "${{ matrix.target }}" "target/${{ matrix.target }}/release/exitbind" dist
       - name: Exercise packaged macOS installer
         run: ./scripts/installer-smoke.sh dist "${{ matrix.target }}"
       - name: Attest packaged archive provenance
         id: attest
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: dist/soulmate-${{ matrix.target }}.tar.gz
+          subject-path: dist/exitbind-${{ matrix.target }}.tar.gz
       - name: Verify packaged archive provenance
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh attestation verify "dist/soulmate-${{ matrix.target }}.tar.gz" \
+          gh attestation verify "dist/exitbind-${{ matrix.target }}.tar.gz" \
             --bundle "${{ steps.attest.outputs.bundle-path }}" \
             --repo "$GITHUB_REPOSITORY" \
             --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
@@ -177,9 +177,9 @@ jobs:
         with:
           name: release-${{ matrix.target }}-${{ github.sha }}
           path: |
-            dist/soulmate-${{ matrix.target }}
-            dist/soulmate-${{ matrix.target }}.tar.gz
-            dist/soulmate-${{ matrix.target }}.tar.gz.sha256
+            dist/exitbind-${{ matrix.target }}
+            dist/exitbind-${{ matrix.target }}.tar.gz
+            dist/exitbind-${{ matrix.target }}.tar.gz.sha256
             dist/${{ matrix.target }}.bundle.json
           if-no-files-found: error
           retention-days: 1
@@ -191,10 +191,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - name: Download Linux release candidate
+      - name: Download Linux stable release
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: soulmate-linux-x86_64-${{ github.sha }}
+          name: exitbind-linux-x86_64-${{ github.sha }}
           path: wsl-release
       - name: Install Ubuntu under WSL 2
         shell: pwsh
@@ -244,21 +244,21 @@ jobs:
             aarch64-apple-darwin.bundle.json \
             x86_64-apple-darwin.bundle.json \
             x86_64-unknown-linux-gnu.bundle.json \
-            soulmate-aarch64-apple-darwin \
-            soulmate-aarch64-apple-darwin.tar.gz \
-            soulmate-aarch64-apple-darwin.tar.gz.sha256 \
-            soulmate-x86_64-apple-darwin \
-            soulmate-x86_64-apple-darwin.tar.gz \
-            soulmate-x86_64-apple-darwin.tar.gz.sha256 \
-            soulmate-x86_64-unknown-linux-gnu \
-            soulmate-x86_64-unknown-linux-gnu.tar.gz \
-            soulmate-x86_64-unknown-linux-gnu.tar.gz.sha256 | sort)
+            exitbind-aarch64-apple-darwin \
+            exitbind-aarch64-apple-darwin.tar.gz \
+            exitbind-aarch64-apple-darwin.tar.gz.sha256 \
+            exitbind-x86_64-apple-darwin \
+            exitbind-x86_64-apple-darwin.tar.gz \
+            exitbind-x86_64-apple-darwin.tar.gz.sha256 \
+            exitbind-x86_64-unknown-linux-gnu \
+            exitbind-x86_64-unknown-linux-gnu.tar.gz \
+            exitbind-x86_64-unknown-linux-gnu.tar.gz.sha256 | sort)
           actual=$(for file in release-evidence/*; do basename "$file"; done | sort)
           test "$actual" = "$expected"
           for target in x86_64-unknown-linux-gnu aarch64-apple-darwin x86_64-apple-darwin; do
-            archive="soulmate-$target.tar.gz"
+            archive="exitbind-$target.tar.gz"
             (cd release-evidence && sha256sum -c "$archive.sha256")
-            test "$(tar -tzf "release-evidence/$archive")" = "soulmate-$target"
+            test "$(tar -tzf "release-evidence/$archive")" = "exitbind-$target"
           done
       - name: Verify transferred archive provenance
         env:
@@ -266,7 +266,7 @@ jobs:
         run: |
           set -eu
           for target in x86_64-unknown-linux-gnu aarch64-apple-darwin x86_64-apple-darwin; do
-            gh attestation verify "release-evidence/soulmate-$target.tar.gz" \
+            gh attestation verify "release-evidence/exitbind-$target.tar.gz" \
               --bundle "release-evidence/$target.bundle.json" \
               --repo "$GITHUB_REPOSITORY" \
               --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
@@ -280,22 +280,22 @@ jobs:
           }
           trap cleanup_verified_payloads EXIT HUP INT TERM
           for target in x86_64-unknown-linux-gnu aarch64-apple-darwin x86_64-apple-darwin; do
-            archive="soulmate-$target.tar.gz"
+            archive="exitbind-$target.tar.gz"
             payload_dir="$verified_payloads/$target"
             mkdir "$payload_dir"
             tar -xzf "release-evidence/$archive" -C "$payload_dir"
-            test ! -L "$payload_dir/soulmate-$target"
-            test -f "$payload_dir/soulmate-$target"
-            test -x "$payload_dir/soulmate-$target"
-            cmp "$payload_dir/soulmate-$target" "release-evidence/soulmate-$target"
+            test ! -L "$payload_dir/exitbind-$target"
+            test -f "$payload_dir/exitbind-$target"
+            test -x "$payload_dir/exitbind-$target"
+            cmp "$payload_dir/exitbind-$target" "release-evidence/exitbind-$target"
           done
       - name: Stage exactly the published release assets
         run: |
           mkdir dist
           for target in x86_64-unknown-linux-gnu aarch64-apple-darwin x86_64-apple-darwin; do
-            cp "release-evidence/soulmate-$target" dist/
-            cp "release-evidence/soulmate-$target.tar.gz" dist/
-            cp "release-evidence/soulmate-$target.tar.gz.sha256" dist/
+            cp "release-evidence/exitbind-$target" dist/
+            cp "release-evidence/exitbind-$target.tar.gz" dist/
+            cp "release-evidence/exitbind-$target.tar.gz.sha256" dist/
           done
       - name: Publish tag assets
         env:
@@ -343,9 +343,9 @@ jobs:
           name: release-${{ matrix.target }}-${{ github.sha }}
           path: expected
       - name: Prepare expected artifact executable mode
-        run: chmod 0755 "expected/soulmate-${{ matrix.target }}"
+        run: chmod 0755 "expected/exitbind-${{ matrix.target }}"
       - name: Retrieve and verify published installer
         env:
-          SOULMATE_REPOSITORY: ${{ github.repository }}
-          SOULMATE_VERSION: ${{ github.ref_name }}
-        run: ./scripts/published-install-smoke.sh "${{ matrix.target }}" "expected/soulmate-${{ matrix.target }}"
+          EXITBIND_REPOSITORY: ${{ github.repository }}
+          EXITBIND_VERSION: ${{ github.ref_name }}
+        run: ./scripts/published-install-smoke.sh "${{ matrix.target }}" "expected/exitbind-${{ matrix.target }}"

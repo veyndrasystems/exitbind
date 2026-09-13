@@ -190,25 +190,30 @@ pub(crate) fn stage(
 
 pub(crate) fn require_compatible_command(protocol: &str) -> Result<(), String> {
     let path = std::env::var("PATH").unwrap_or_default();
+    let command = if crate::producer::exitbind_surface() {
+        "exitbind"
+    } else {
+        "soulmate"
+    };
     let executable = std::env::split_paths(&path)
         .filter(|dir| !dir.as_os_str().is_empty())
-        .map(|dir| dir.join("soulmate"))
+        .map(|dir| dir.join(command))
         .find(|candidate| executable_file(candidate))
-        .ok_or(
-            "soulmate executable was not found on PATH; install the CLI before applying hooks",
-        )?;
+        .ok_or(format!(
+            "{command} executable was not found on PATH; install the CLI before applying hooks"
+        ))?;
     let mut child = Command::new(executable)
         .arg("hook-protocol")
         .env("PATH", &path)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|_| "PATH-installed soulmate does not support the required hook protocol; update the CLI before applying hooks".to_string())?;
+        .map_err(|_| format!("PATH-installed {command} does not support the required hook protocol; update the CLI before applying hooks"))?;
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
         if let Some(status) = child
             .try_wait()
-            .map_err(|_| "PATH-installed soulmate does not support the required hook protocol; update the CLI before applying hooks".to_string())?
+            .map_err(|_| format!("PATH-installed {command} does not support the required hook protocol; update the CLI before applying hooks"))?
         {
             let mut stdout = String::new();
             if let Some(mut pipe) = child.stdout.take() {
@@ -217,12 +222,12 @@ pub(crate) fn require_compatible_command(protocol: &str) -> Result<(), String> {
             if status.success() && stdout.trim() == protocol {
                 return Ok(());
             }
-            return Err("PATH-installed soulmate does not support the required hook protocol; update the CLI before applying hooks".into());
+            return Err(format!("PATH-installed {command} does not support the required hook protocol; update the CLI before applying hooks"));
         }
         if Instant::now() >= deadline {
             let _ = child.kill();
             let _ = child.wait();
-            return Err("PATH-installed soulmate does not support the required hook protocol; update the CLI before applying hooks".into());
+            return Err(format!("PATH-installed {command} does not support the required hook protocol; update the CLI before applying hooks"));
         }
         thread::sleep(Duration::from_millis(10));
     }

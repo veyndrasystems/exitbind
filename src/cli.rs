@@ -135,6 +135,7 @@ fn configured_command(command: &str, a: &Arguments) -> Result<(), String> {
             | "away"
             | "migrate"
             | "work"
+            | "receipt"
     ) {
         return Err(format!("unknown command '{command}'"));
     }
@@ -144,6 +145,7 @@ fn configured_command(command: &str, a: &Arguments) -> Result<(), String> {
         "brief" => brief_command(&loaded, a),
         "plan" => plan_command(&loaded, a),
         "verify" => verify_command(&loaded, a),
+        "receipt" => exit_receipt_command(&loaded, a),
         "profile" => profile_command(&loaded, a),
         "memory" => memory_command(&loaded, a),
         "run" => run_command(&loaded, a),
@@ -276,7 +278,14 @@ fn away_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
             args::assert_positionals("away list", a, 1)?;
             let runs = away::list(l)?;
             if runs.is_empty() {
-                println!("no Soulmate away runs");
+                println!(
+                    "no {} away runs",
+                    if crate::producer::exitbind_surface() {
+                        "Exitbind"
+                    } else {
+                        "Soulmate"
+                    }
+                );
             } else {
                 for (run, status) in runs {
                     println!("{run}\t{status}");
@@ -362,12 +371,86 @@ fn plan_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
 fn verify_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
     args::assert_options("verify", a, &["config"])?;
     args::assert_positionals("verify", a, 1)?;
-    let value = receipt::verify(positional(a, 0, "verify requires a receipt path")?, l)?;
-    print_json(&value)?;
+    let path = positional(a, 0, "verify requires a receipt path")?;
+    let value = match receipt::verify_exit_path(path, l) {
+        Ok(value) if value["format"] == "exit-path-v1" => value,
+        Ok(_) => receipt::verify(path, l)?,
+        Err(error) if crate::producer::exitbind_surface() => match receipt::verify(path, l) {
+            Ok(value) => value,
+            Err(_) => return Err(exit_path_failure("receipt_malformed", error)),
+        },
+        Err(_) => receipt::verify(path, l)?,
+    };
+    let exit_path = value["format"] == "exit-path-v1";
     if !value["valid"].as_bool().unwrap_or(false) {
+        if exit_path {
+            return Err(exit_path_failure(
+                value["reason"]["code"]
+                    .as_str()
+                    .unwrap_or("receipt_mismatch"),
+                value["reason"]["detail"].to_string(),
+            ));
+        }
+        print_json(&value)?;
         return Err("receipt verification failed".into());
     }
+    print_json(&value)?;
     Ok(())
+}
+
+fn exit_receipt_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
+    args::assert_options("receipt", a, &["config", "json", "output"])?;
+    args::assert_positionals("receipt", a, 1)?;
+    let ledger = positional(a, 0, "receipt requires a checked run ledger path")?;
+    let value = receipt::exit_path(l, ledger).map_err(|error| {
+        let code = if error.contains("check evidence") {
+            "check_evidence_blocked"
+        } else if error.contains("configured check policy") {
+            "check_policy_missing"
+        } else if error.contains("reviewer") {
+            "review_missing"
+        } else if error.contains("lead acceptance") {
+            "acceptance_missing"
+        } else {
+            "run_not_ready"
+        };
+        exit_path_failure(code, error)
+    })?;
+    if let Some(path) = a.options.get("output") {
+        let target = receipt::exit_receipt_path(l, path)?;
+        let source =
+            serde_json::to_string_pretty(&value).map_err(|error| error.to_string())? + "\n";
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(target)
+            .map_err(|error| error.to_string())?;
+        file.write_all(source.as_bytes())
+            .map_err(|error| error.to_string())?;
+    }
+    print_json(&value)
+}
+
+fn exit_path_failure(code: &str, detail: String) -> String {
+    let outcome = if code == "check_evidence_blocked" {
+        "BLOCKED"
+    } else {
+        "REFUSED"
+    };
+    format!(
+        "EXITBIND_JSON:{}",
+        serde_json::json!({
+            "product": "exitbind",
+            "format": "exit-path-v1",
+            "valid": false,
+            "outcome": outcome,
+            "reason": {"code": code, "detail": detail},
+        })
+    )
 }
 
 fn profile_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
@@ -740,7 +823,7 @@ fn run_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
     .map_err(|error| map_run_error(error, a.flags.contains_key("json")))?;
     if action == "start" {
         if a.options.contains_key("check-command") {
-            eprintln!("Checked run: v4 acceptance may use local observe-check or a caller-reported record-check for each current worker submission, bound to the frozen command. Historical v3 runs remain reported-only.");
+            eprintln!("Checked run: v5 acceptance may use local observe-check or a caller-reported record-check for each current worker submission, bound to the frozen command. Historical v3-v4 runs remain readable.");
         } else {
             eprintln!("Unchecked run: no check-result requirement is configured. Start with --check-command to require check evidence before acceptance.");
         }
@@ -764,12 +847,17 @@ fn map_run_error(error: String, json_output: bool) -> String {
     let Some(machine) = error.strip_prefix("SOULMATE_DRIFT:") else {
         return error;
     };
+    let command = if crate::producer::exitbind_surface() {
+        "exitbind"
+    } else {
+        "soulmate"
+    };
     if json_output {
         return format!("SOULMATE_JSON:{machine}");
     } else if let Ok(value) = serde_json::from_str::<serde_json::Value>(machine) {
         if value["classification"] == "config_drift" {
             eprintln!(
-                "configuration drift detected after run start (expected {}, current {}). Inspect the old run, then use 'soulmate run supersede' to begin an explicit successor.",
+                "configuration drift detected after run start (expected {}, current {}). Inspect the old run, then use '{command} run supersede' to begin an explicit successor.",
                 value["expectedConfigSha256"], value["currentConfigSha256"]
             );
         } else if value["classification"] == "profile_drift" {
@@ -789,7 +877,7 @@ fn map_run_error(error: String, json_output: bool) -> String {
             );
         } else {
             eprintln!(
-                "memory drift detected after run start for {} (expected set {}, current set {}). Inspect the old run and current memory references, then use 'soulmate run supersede' for an intentional successor.",
+                "memory drift detected after run start for {} (expected set {}, current set {}). Inspect the old run and current memory references, then use '{command} run supersede' for an intentional successor.",
                 value["agent"], value["expectedMemorySetSha256"], value["currentMemorySetSha256"]
             );
         }
@@ -808,25 +896,47 @@ fn map_run_error(error: String, json_output: bool) -> String {
 }
 
 fn print_help() {
+    let product = if crate::producer::exitbind_surface() {
+        "Exitbind"
+    } else {
+        "Soulmate"
+    };
+    let command = if crate::producer::exitbind_surface() {
+        "exitbind"
+    } else {
+        "soulmate"
+    };
     println!(
-        "Soulmate {VERSION}\n\nUsage: soulmate <command> [options]\n\nCore: init, brief, work, check\n  init prepares portable project setup and reviewable agent configuration.\n  brief presents one bounded task to an existing agent host.\n  work drives a checked task through opaque next actions and managed evidence.\n  check validates configuration, profiles, and declared boundaries; the host runs project tests and reports their result.\n\nRun 'soulmate benchmark' for the model-free checked-work demonstration.\nRun 'soulmate help advanced' for work/run actions, recovery, migration, hooks, receipts, and optional surfaces."
+        "{product} {VERSION}\n\nUsage: {command} <command> [options]\n\nCore: init, brief, work, check\n  init prepares portable project setup and reviewable agent configuration.\n  brief presents one bounded task to an existing agent host.\n  work drives a checked task through opaque next actions and managed evidence.\n  check validates configuration, profiles, and declared boundaries; the host runs project tests and reports their result.\n\nRun '{command} benchmark' for the model-free checked-work demonstration.\nRun '{command} help advanced' for work/run actions, recovery, migration, hooks, receipts, and optional surfaces."
     );
 }
 
 fn print_advanced_help() {
-    let help =
-        "Soulmate {VERSION}\n\nDo the next change\n  soulmate init --mode portable --root ROOT\n  soulmate brief worker --task TASK --config CONFIG\n  soulmate run start WORKFLOW --goal GOAL --ledger LEDGER [--check-command COMMAND]\n  soulmate run next LEDGER [--text]\n  soulmate run submit AGENT LEDGER --outcome OUTCOME --artifact ARTIFACT [--event-id]\n  soulmate run record-check LEDGER --target EVENT_SHA --check-command COMMAND --exit-code CODE [--duration-ms MS]\n\nWhen work fails or changes\n  soulmate run status LEDGER\n  soulmate run explain LEDGER [--event PROTECTION_EVENT_SHA]\n  soulmate run report LEDGER [LEDGER ...]\n  soulmate run inspect LEDGER\n  soulmate run supersede OLD_LEDGER --workflow WORKFLOW --goal GOAL --ledger NEW_LEDGER\n  --text prints a readable pending assignment; --event-id prints the submitted event hash.\n  Each output flag conflicts with --json; default JSON is unchanged.\n\nOptional surfaces\n  Advanced commands: bind, doctor, plan, verify, profile, migrate, memory (resolve/inspect/lifecycle), away, hooks, hook-protocol, hook-run, version.\n  Run value proof: the host executes the configured check, then reports its actual result with 'run record-check'; use 'run status', 'run explain', and 'run report' for bounded evidence views.\n  Run 'soulmate migrate layout --config CONFIG' to inspect a legacy profile migration, then repeat with --apply. Use 'migrate paths' for canonical harness and state directories.\n  Use 'soulmate run supersede OLD_LEDGER --workflow WORKFLOW --goal GOAL --ledger NEW_LEDGER' after configuration, profile, memory, boundary, or harness-receipt drift."
-    ;
-    println!(
-        "{}",
-        help.replace(
-            "Run value proof: the host executes the configured check, then reports its actual result with 'run record-check'; use 'run status', 'run explain', and 'run report' for bounded evidence views.",
-            "Run value proof: new v4 runs may observe the frozen check locally with 'run observe-check' or record a host report with 'run record-check'; historical v3 runs are reported-only. Use 'run status', 'run explain', and 'run report' for bounded evidence views.",
-        )
+    let product = if crate::producer::exitbind_surface() {
+        "Exitbind"
+    } else {
+        "Soulmate"
+    };
+    let command = if crate::producer::exitbind_surface() {
+        "exitbind"
+    } else {
+        "soulmate"
+    };
+    let help = format!(
+        "{product} {VERSION}\n\nDo the next change\n  {command} init --mode portable --root ROOT\n  {command} brief worker --task TASK --config CONFIG\n  {command} run start WORKFLOW --goal GOAL --ledger LEDGER [--check-command COMMAND]\n  {command} run next LEDGER [--text]\n  {command} run submit AGENT LEDGER --outcome OUTCOME --artifact ARTIFACT [--event-id]\n  {command} run record-check LEDGER --target EVENT_SHA --check-command COMMAND --exit-code CODE [--duration-ms MS]\n\nWhen work fails or changes\n  {command} run status LEDGER\n  {command} run explain LEDGER [--event PROTECTION_EVENT_SHA]\n  {command} run report LEDGER [LEDGER ...]\n  {command} run inspect LEDGER\n  {command} run supersede OLD_LEDGER --workflow WORKFLOW --goal GOAL --ledger NEW_LEDGER\n  --text prints a readable pending assignment; --event-id prints the submitted event hash.\n  Each output flag conflicts with --json; default JSON is unchanged.\n\nOptional surfaces\n  Advanced commands: bind, doctor, plan, verify, profile, migrate, memory (resolve/inspect/lifecycle), away, hooks, hook-protocol, hook-run, version.\n  Run value proof: the host executes the configured check, then reports its actual result with 'run record-check'; use 'run status', 'run explain', and 'run report' for bounded evidence views.\n  Run '{command} migrate layout --config CONFIG' to inspect a legacy profile migration, then repeat with --apply. Use 'migrate paths' for canonical harness and state directories.\n  Use '{command} run supersede OLD_LEDGER --workflow WORKFLOW --goal GOAL --ledger NEW_LEDGER' after configuration, profile, memory, boundary, or harness-receipt drift."
     );
-    println!("  Checked v4 runs may use: soulmate run observe-check LEDGER --target EVENT_SHA [--timeout-ms MS]");
+    let value_help = if crate::producer::exitbind_surface() {
+        "Run value proof: new v5 runs may observe the frozen check locally with 'run observe-check' or record a host report with 'run record-check'; historical v3-v4 runs remain readable. Use 'run status', 'run explain', and 'run report' for bounded evidence views."
+    } else {
+        "Run value proof: new v4 runs may observe the frozen check locally with 'run observe-check' or record a host report with 'run record-check'; historical v3 runs are reported-only. Use 'run status', 'run explain', and 'run report' for bounded evidence views."
+    };
+    println!("{}", help.replace(
+        "Run value proof: the host executes the configured check, then reports its actual result with 'run record-check'; use 'run status', 'run explain', and 'run report' for bounded evidence views.",
+        value_help,
+    ));
+    println!("  Checked {} runs may use: {command} run observe-check LEDGER --target EVENT_SHA [--timeout-ms MS]", if crate::producer::exitbind_surface() { "v5" } else { "v4" });
     println!("  Local observation defaults to a 1,800,000 ms (30 minute) timeout; --timeout-ms must be positive.");
-    println!("Run 'soulmate update' to explicitly install the newest allowed release.");
+    println!("Run '{command} update' to explicitly install the newest allowed release.");
 }
 
 fn print_json(value: &serde_json::Value) -> Result<(), String> {

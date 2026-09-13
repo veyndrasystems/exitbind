@@ -2,7 +2,7 @@
 
 This deterministic, token-free scenario supports one narrow sentence:
 
-> In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.
+> In checked runs, Exitbind refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.
 
 It creates a disposable portable fixture, runs a competent legacy workflow with
 four distinct generic artifacts, and observes the same deterministic check
@@ -24,13 +24,13 @@ profiles, transcripts, paths, and artifact contents.
 Run it with the installed binary:
 
 ```sh
-soulmate benchmark
+exitbind benchmark
 ```
 
 From a checkout, the suite entry point is:
 
 ```sh
-SOULMATE_BIN=target/debug/soulmate ./scripts/run-value-proof-suite.sh
+EXITBIND_BIN=target/debug/exitbind ./scripts/run-value-proof-suite.sh
 ```
 
 The stable expected machine result is in [expected.json](expected.json).

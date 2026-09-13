@@ -26,13 +26,13 @@ struct DirectoryOperation {
 
 pub(crate) fn prepare_paths(loaded: &Loaded, apply: bool) -> Result<Value, String> {
     let mut directories = Vec::new();
-    let desired = crate::project_layout::CANONICAL_CONTROL_DIRS
-        .iter()
-        .map(|relative| ("control", &loaded.control_root, *relative))
+    let desired = crate::project_layout::control_dirs()
+        .into_iter()
+        .map(|relative| ("control", &loaded.control_root, relative))
         .chain(
-            crate::project_layout::CANONICAL_STATE_DIRS
-                .iter()
-                .map(|relative| ("state", &loaded.state_root, *relative)),
+            crate::project_layout::state_dirs()
+                .into_iter()
+                .map(|relative| ("state", &loaded.state_root, relative)),
         );
     for (root_name, root, relative) in desired {
         if let Some(path) = missing_directory(root, relative)? {
@@ -44,7 +44,7 @@ pub(crate) fn prepare_paths(loaded: &Loaded, apply: bool) -> Result<Value, Strin
         }
     }
 
-    let canonical = crate::harness_manifest::CANONICAL_PATH;
+    let canonical = crate::harness_manifest::canonical_path(loaded);
     let manifest = match fs::symlink_metadata(loaded.control_root.join(canonical)) {
         Ok(_) => {
             regular_path(

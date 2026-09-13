@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.17.0
+
+- Rebrand the current public product as Exitbind with the lines “Exitbind — No
+  result exits unbound.” and “Bind the evidence to the exact result before
+  exit.”
+- Add run-event format 5 for new writes, binding an Accepted Subject to the
+  exact result and evidence while retaining historical v1–v4 readers and
+  `soulmate` producer provenance.
+- Retire Coffee as a public feature and brand; readiness guidance belongs to
+  the lead surface. Keep OpenCode path-compatible and experimental unless host
+  execution is directly observed.
+- Preserve the honest limits: local evidence is not tamper-proof, model
+  compliance, human adoption, or general project-diff coverage, and no daemon,
+  cloud, database, telemetry, model runtime, or new dependency is introduced.
+
 ## 0.16.0-rc.1
 
 - Add the agent-first `work begin|next|return|check|resume` façade over the
@@ -102,6 +117,7 @@ re-executed during this review.
 | 0.12.1-rc.2 | [v0.12.1-rc.2](https://github.com/veyndrasystems/soulmate/tree/v0.12.1-rc.2), `243d781` | None | Same persisted readers as 0.12.0. |
 | 0.15.0-rc.1 | [v0.15.0-rc.1](https://github.com/veyndrasystems/soulmate/tree/v0.15.0-rc.1), `8b3a509` | Adds checked run events 4 with locally observed or caller-reported check acquisition | Receipts 1–2; run events 1–4; memory, configuration and harness manifest 1. |
 | 0.15.0-rc.3 | [v0.15.0-rc.3](https://github.com/veyndrasystems/soulmate/tree/v0.15.0-rc.3), `4faf2a7` | None | Same persisted readers as 0.15.0-rc.1. |
+| 0.17.0 | Current stable Exitbind release | Adds new checked run-event format 5 with Accepted Subject bindings; retains historical readers for v1–v4. | Exitbind v5 plus historical v1–v4 readers. |
 
 The parentless public root `a0b8be3` contains package 0.10.0 without a
 corresponding public release tag in this observed map. Earlier changelog

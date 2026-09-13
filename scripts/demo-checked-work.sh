@@ -3,7 +3,7 @@
 set -eu
 umask 077
 
-binary=${SOULMATE_BIN:-soulmate}
+binary=${EXITBIND_BIN:-${SOULMATE_BIN:-soulmate}}
 case "$binary" in
   /*) ;;
   */*) binary="$(pwd)/$binary" ;;
@@ -13,14 +13,20 @@ project=$(mktemp -d "${TMPDIR:-/tmp}/soulmate checked.XXXXXX")
 trap 'rm -rf "$project"' EXIT HUP INT TERM
 cd "$project"
 
-ledger=.soulmate/runs/change.jsonl
+case "$(basename "$binary")" in
+  exitbind) config=exitbind.json; state=.exitbind ;;
+  soulmate) config=soulmate.json; state=.soulmate ;;
+  *) printf 'Demo requires an exitbind or soulmate binary: %s\n' "$binary" >&2; exit 1 ;;
+esac
+
+ledger="$state/runs/change.jsonl"
 check_command='test "$(cat message.txt)" = ready'
 
-sm() { "$binary" "$@" --config soulmate.json; }
-artifact() { printf '%s\n' "$2" > ".soulmate/artifacts/$1.md"; }
+sm() { "$binary" "$@" --config "$config"; }
+artifact() { printf '%s\n' "$2" > "$state/artifacts/$1.md"; }
 submit() {
   sm run submit "$1" "$ledger" --outcome "$2" \
-    --artifact ".soulmate/artifacts/$3.md" --artifact-root state
+    --artifact "$state/artifacts/$3.md" --artifact-root state
 }
 
 "$binary" init --mode portable >/dev/null
@@ -35,7 +41,7 @@ printf 'unfinished\n' > message.txt
 artifact worker-1 'Scripted worker claims completion; message is still unfinished.'
 # Capture the identity at submission, before the host runs the check.
 target=$(sm run submit worker "$ledger" --outcome completed \
-  --artifact .soulmate/artifacts/worker-1.md --artifact-root state --event-id)
+  --artifact "$state/artifacts/worker-1.md" --artifact-root state --event-id)
 check_exit=0
 sh -c "$check_command" || check_exit=$?
 test "$check_exit" -ne 0
@@ -63,13 +69,13 @@ case "$resumed" in
   *) printf 'Demo failed: prior worker artifact is missing from resume.\n' >&2; exit 1 ;;
 esac
 printf '%s\n' "$resumed"
-test "$(cat .soulmate/artifacts/worker-1.md)" = \
+test "$(cat "$state/artifacts/worker-1.md")" = \
   'Scripted worker claims completion; message is still unfinished.'
 
 printf 'ready\n' > message.txt
 artifact worker-2 'Scripted worker repaired message.txt; check it again.'
 target=$(sm run submit worker "$ledger" --outcome completed \
-  --artifact .soulmate/artifacts/worker-2.md --artifact-root state --event-id)
+  --artifact "$state/artifacts/worker-2.md" --artifact-root state --event-id)
 check_exit=0
 sh -c "$check_command" || check_exit=$?
 test "$check_exit" -eq 0

@@ -1,8 +1,8 @@
 # Windows development with WSL 2
 
-Soulmate's supported Windows path is Ubuntu under WSL 2. Soulmate runs as the
+Exitbind's supported Windows path is Ubuntu under WSL 2. Exitbind runs as the
 published Linux binary inside the distribution; it is not a native Windows
-executable. Keep Codex or Claude Code, `git`, `tmux`, Soulmate, and the project
+executable. Keep Codex or Claude Code, `git`, `tmux`, Exitbind, and the project
 inside the same WSL distribution.
 
 Native PowerShell/CMD execution, Windows-path state roots, and a native Windows
@@ -25,21 +25,21 @@ when prompted. Confirm that Ubuntu uses WSL 2:
 wsl.exe --list --verbose
 ```
 
-## Install Soulmate inside Ubuntu
+## Install Exitbind inside Ubuntu
 
 Open the Ubuntu terminal. Keep projects under the Linux home directory, not
 under `/mnt/c`, so Linux path, permission, and filesystem behavior remain the
-ones Soulmate tests.
+ones Exitbind tests.
 
 ```sh
 sudo apt-get update
 sudo apt-get install -y curl git tmux
-curl -fsSL https://raw.githubusercontent.com/veyndrasystems/soulmate/v0.16.0-rc.1/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veyndrasystems/exitbind/v0.17.0/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 
 mkdir -p "$HOME/projects"
-soulmate init --mode portable --root "$HOME/projects/first-soulmate-project"
-soulmate check --config "$HOME/projects/first-soulmate-project/soulmate.json"
+exitbind init --mode portable --root "$HOME/projects/first-exitbind-project"
+exitbind check --config "$HOME/projects/first-exitbind-project/exitbind.json"
 ```
 
 Persist `~/.local/bin` in `PATH` using the shell's normal startup file before
@@ -48,20 +48,20 @@ starting Codex or Claude Code from Ubuntu.
 ## Agent and away-runner boundary
 
 Install and launch the coding-agent CLI inside the same Ubuntu distribution.
-The optional `soulmate away` path additionally requires `tmux` there. It can
+The optional `exitbind away` path additionally requires `tmux` there. It can
 survive a terminal, editor, or SSH client disconnect while Ubuntu and Windows
 continue running; it cannot survive Windows sleep, shutdown, reboot, or
 `wsl.exe --shutdown`.
 
 From PowerShell, enter the default distribution with `wsl.exe`. Windows tools
-can browse the project through `\\wsl$`, but run Soulmate and its agent host
+can browse the project through `\\wsl$`, but run Exitbind and its agent host
 from the Linux side.
 
 ## Evidence boundary
 
-CI builds the locked Linux release candidate, transfers that exact workflow
+CI builds the locked Linux stable release, transfers that exact workflow
 artifact to Ubuntu under WSL 2 on GitHub's `windows-2025` runner, and exercises
-the installed candidate through `init`, `check`, `brief`, and `run` state
+the installed release through `init`, `check`, `brief`, and `run` state
 creation/inspection. Existing Linux CI owns the deeper Rust and real-tmux
 coverage. This evidence does not claim native Windows filesystem, process,
 hook-mutation, or binary support.

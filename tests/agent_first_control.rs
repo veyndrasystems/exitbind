@@ -594,7 +594,7 @@ fn matched_workflows_measure_protocol_transport_without_product_overclaim() {
     assert!(baseline.bookkeeping_inputs > candidate.bookkeeping_inputs);
     for (label, baseline_value, candidate_value) in [
         (
-            "Soulmate process calls",
+            "Exitbind process calls",
             baseline.soulmate_calls,
             candidate.soulmate_calls,
         ),

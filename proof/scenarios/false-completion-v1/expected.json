@@ -2,7 +2,7 @@
   "version": 1,
   "scenarioId": "false-completion-v1",
   "origin": "synthetic",
-  "claim": "In checked runs, Soulmate refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.",
+  "claim": "In checked runs, Exitbind refuses acceptance when the configured check result is missing or reports failure for the current worker artifact.",
   "expectedResult": {
     "baseline": {
       "checkExitCode": 1,

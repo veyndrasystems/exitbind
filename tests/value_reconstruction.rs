@@ -110,6 +110,85 @@ fn exported_bundle_reconstructs_without_result_or_report() {
 }
 
 #[test]
+fn current_and_legacy_benchmarks_report_their_selected_surface() {
+    for (binary, product, producer, format_version, config, state, forbidden) in [
+        (
+            env!("CARGO_BIN_EXE_exitbind"),
+            "Exitbind",
+            "exitbind",
+            5,
+            "exitbind.json",
+            ".exitbind",
+            "Soulmate",
+        ),
+        (
+            env!("CARGO_BIN_EXE_soulmate"),
+            "Soulmate",
+            "soulmate",
+            4,
+            "soulmate.json",
+            ".soulmate",
+            "Exitbind",
+        ),
+    ] {
+        let output = Command::new(binary)
+            .args(["benchmark", "--json"])
+            .output()
+            .expect("benchmark binary should start");
+        assert!(
+            output.status.success(),
+            "benchmark failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let value: Value = serde_json::from_slice(&output.stdout).expect("benchmark JSON");
+        assert_eq!(value["product"], product);
+        assert_eq!(value["producer"], producer);
+        assert_eq!(value["formatVersion"], format_version);
+        assert_eq!(value["layout"]["config"], config);
+        assert_eq!(value["layout"]["state"], state);
+        assert!(
+            !String::from_utf8_lossy(&output.stdout).contains(forbidden),
+            "selected benchmark leaked the other product surface"
+        );
+    }
+}
+
+#[test]
+fn current_away_surface_names_exitbind_configuration_and_state() {
+    let parent = TempDir::new("away-surface");
+    let missing = Command::new(env!("CARGO_BIN_EXE_exitbind"))
+        .current_dir(parent.path())
+        .args(["away", "list"])
+        .output()
+        .expect("exitbind should start");
+    assert!(!missing.status.success());
+    let missing_text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&missing.stdout),
+        String::from_utf8_lossy(&missing.stderr)
+    );
+    assert!(missing_text.contains("exitbind.json"));
+    assert!(!missing_text.contains("soulmate.json"));
+
+    let project = parent.path().join("project");
+    fs::create_dir(&project).expect("project directory");
+    let initialized = Command::new(env!("CARGO_BIN_EXE_exitbind"))
+        .current_dir(&project)
+        .args(["init", "--mode", "portable"])
+        .output()
+        .expect("exitbind init should start");
+    assert!(initialized.status.success());
+    let listed = Command::new(env!("CARGO_BIN_EXE_exitbind"))
+        .current_dir(&project)
+        .args(["away", "list"])
+        .output()
+        .expect("exitbind away should start");
+    assert!(listed.status.success());
+    assert!(String::from_utf8_lossy(&listed.stdout).contains("no Exitbind away runs"));
+}
+
+#[test]
 fn event_shapes_rejects_closed_all_of_fragment_missing_common_properties() {
     let schema = parse_json(
         include_bytes!("../schema/run-event-v3.schema.json"),

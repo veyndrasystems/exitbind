@@ -102,7 +102,10 @@ fn attended_work_uses_native_spawn_without_away_fallback() {
         assert!(document.contains(
             "Historical evidence remains in place; quarantine does not delete or rewrite it"
         ));
-        assert!(document.contains("soulmate away start implementation_worker"));
+        assert!(
+            document.contains("exitbind away start implementation_worker")
+                || document.contains("soulmate away start implementation_worker")
+        );
     }
 
     fs::remove_dir_all(base).unwrap();

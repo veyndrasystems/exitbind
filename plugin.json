@@ -1,26 +1,29 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "soulmate",
-  "version": "0.16.0-rc.1",
-  "description": "It verifies what you asked an agent to do and what came back, in the same record. Use it as an opt-in, bounded project guidance surface; ordinary work remains unchanged. Plugin installation provides host guidance and does not install the separate soulmate CLI.",
+  "name": "exitbind",
+  "version": "0.17.0",
+  "description": "Exitbind — No result exits unbound. Bind the evidence to the exact result before exit. For your existing Codex or Claude lead; this skills-only plugin installs guidance, not the separate Exitbind CLI.",
   "author": { "name": "Veyndra Systems", "url": "https://github.com/veyndrasystems" },
-  "repository": "https://github.com/veyndrasystems/soulmate",
+  "repository": "https://github.com/veyndrasystems/exitbind",
   "license": "MIT",
-  "keywords": ["agents", "briefs", "orchestration", "receipts"],
+  "keywords": ["agents", "acceptance", "evidence", "receipts"],
   "extensions": {
     "com.openai": {
       "interface": {
-        "displayName": "Soulmate",
-        "shortDescription": "Inspectable handoffs for a configured project",
-        "longDescription": "It verifies what you asked an agent to do and what came back, in the same record. Use it as an opt-in, bounded project guidance surface; ordinary work remains unchanged. Plugin installation provides host guidance and does not install the separate soulmate CLI.",
+        "displayName": "Exitbind",
+        "shortDescription": "Evidence-bound acceptance for agent work",
+        "longDescription": "Exitbind — No result exits unbound. Bind the evidence to the exact result before exit. For your existing Codex or Claude lead; this skills-only plugin installs guidance, not the separate Exitbind CLI.",
         "developerName": "Veyndra Systems",
         "category": "Productivity",
         "capabilities": ["Read"],
-        "defaultPrompt": ["Use Soulmate with this configured project for a bounded, inspectable handoff."]
+        "defaultPrompt": ["Use Exitbind for this material task; keep small reversible work direct."]
       }
     },
     "systems.veyndra.soulmate": {
-      "purpose": "Preserved host-hook compatibility resources; host-specific activation is not implied."
+      "purpose": "Historical host-hook compatibility resources; host-specific activation is not implied."
+    },
+    "systems.veyndra.exitbind": {
+      "purpose": "Exitbind host-hook compatibility resources; host-specific activation is not implied."
     }
   }
 }

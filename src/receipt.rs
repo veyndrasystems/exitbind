@@ -104,6 +104,181 @@ pub fn verify(path: &str, loaded: &Loaded) -> Result<Value, String> {
     }))
 }
 
+/// Emit the Exit Path receipt for a fully accepted v5 checked run.
+pub(crate) fn exit_path(loaded: &Loaded, ledger: &str) -> Result<Value, String> {
+    let (path, events, source) = crate::run_ledger::load(loaded, ledger)?;
+    let state = crate::run_state::reduce(&events)?;
+    crate::run::assert_current_for_receipt(loaded, &state)?;
+    if state["version"] != 5 || state["status"] != "accepted" {
+        return Err("Exit Path receipt requires an accepted v5 checked run".into());
+    }
+    if state.get("checkPolicy").is_none() {
+        return Err("Exit Path receipt requires a configured check policy".into());
+    }
+    let assessment = crate::run_value::check_guard(&state)?;
+    if assessment.is_blocked() {
+        return Err(
+            "Exit Path receipt refused: current check evidence is incomplete or failed".into(),
+        );
+    }
+    let submissions = state["submissions"]
+        .as_array()
+        .ok_or("run submissions are invalid")?;
+    let attempt = state["attempt"].as_u64().ok_or("run attempt is invalid")?;
+    let current = submissions
+        .iter()
+        .filter(|event| event["attempt"] == attempt)
+        .collect::<Vec<_>>();
+    let reviewer = current
+        .iter()
+        .rev()
+        .find(|event| event["role"] == "reviewer" && event["outcome"] == "approved")
+        .ok_or("Exit Path receipt requires reviewer approval")?;
+    let acceptance = current
+        .iter()
+        .rev()
+        .find(|event| event["role"] == "lead" && event["outcome"] == "accepted")
+        .ok_or("Exit Path receipt requires lead acceptance")?;
+    if !current
+        .iter()
+        .any(|event| event["role"] == "worker" && event["outcome"] == "completed")
+    {
+        return Err("Exit Path receipt requires worker completion".into());
+    }
+    let artifacts = current
+        .iter()
+        .filter(|event| {
+            (event["role"] == "worker" && event["outcome"] == "completed")
+                || (event["role"] == "reviewer" && event["outcome"] == "approved")
+                || (event["role"] == "lead" && event["outcome"] == "accepted")
+        })
+        .map(|event| event["artifact"].clone())
+        .collect::<Vec<_>>();
+    Ok(json!({
+        "version": 1,
+        "format": "exit-path-v1",
+        "product": "exitbind",
+        "outcome": "READY",
+        "reason": {"code": "accepted", "detail": "current checked evidence, review, and lead acceptance are bound"},
+        "producer": crate::producer::evidence(),
+        "run": {
+            "path": config::rel(&loaded.state_root, &path.expected)?,
+            "sha256": hash::bytes(source.as_bytes()),
+            "runId": state["runId"],
+            "headEventSha256": events.last().map(|event| event["eventSha256"].clone()).unwrap_or(Value::Null),
+            "configSha256": state["configSha256"],
+        },
+        "subject": state["subject"],
+        "artifacts": artifacts,
+        "check": {"status": "passed", "targets": assessment.targets_for_receipt()},
+        "review": {"eventSha256": reviewer["eventSha256"], "artifactSha256": reviewer["artifact"]["sha256"]},
+        "acceptance": {"eventSha256": acceptance["eventSha256"], "artifactSha256": acceptance["artifact"]["sha256"]},
+    }))
+}
+
+pub(crate) fn verify_exit_path(path: &str, loaded: &Loaded) -> Result<Value, String> {
+    let (_, source) = read_state_bytes(loaded, path)?;
+    let receipt: Value = serde_json::from_slice(&source)
+        .map_err(|error| format!("invalid Exit Path receipt JSON: {error}"))?;
+    let mut mismatches = Vec::new();
+    if receipt["version"] != 1
+        || receipt["format"] != "exit-path-v1"
+        || receipt["product"] != "exitbind"
+    {
+        mismatches.push("receipt format or product changed".to_owned());
+    }
+    if !receipt.get("producer").is_some_and(crate::producer::valid)
+        || receipt["producer"]["name"] != "exitbind"
+    {
+        mismatches.push("receipt producer is not Exitbind".to_owned());
+    }
+    let ledger = receipt["run"]["path"].as_str().unwrap_or("");
+    match crate::run_ledger::load(loaded, ledger) {
+        Ok((_, events, ledger_source)) => match crate::run_state::reduce(&events) {
+            Ok(state) => {
+                if state["version"] != 5 || state["status"] != "accepted" {
+                    mismatches.push("run is not an accepted v5 checked run".into());
+                }
+                if state.get("checkPolicy").is_none() {
+                    mismatches.push("run has no configured check policy".into());
+                }
+                if receipt["run"]["runId"] != state["runId"] {
+                    mismatches.push("run subject changed".into());
+                }
+                if receipt["run"]["configSha256"] != state["configSha256"] {
+                    mismatches.push("configuration binding changed".into());
+                }
+                if receipt["run"]["sha256"] != hash::bytes(ledger_source.as_bytes()) {
+                    mismatches.push("ledger bytes changed".into());
+                }
+                if receipt["run"]["headEventSha256"]
+                    != events
+                        .last()
+                        .map(|event| event["eventSha256"].clone())
+                        .unwrap_or(Value::Null)
+                {
+                    mismatches.push("ledger head changed".into());
+                }
+                if receipt["subject"] != state["subject"] {
+                    mismatches.push("accepted subject changed".into());
+                }
+                if let Err(error) = crate::run::assert_current_for_receipt(loaded, &state) {
+                    mismatches.push(error);
+                }
+                match exit_path(loaded, ledger) {
+                    Ok(expected) => {
+                        for key in [
+                            "run",
+                            "subject",
+                            "artifacts",
+                            "check",
+                            "review",
+                            "acceptance",
+                        ] {
+                            if receipt[key] != expected[key] {
+                                mismatches.push(format!("receipt {key} binding changed"));
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        mismatches.push(format!("canonical receipt reconstruction failed: {error}"))
+                    }
+                }
+                if let Ok(assessment) = crate::run_value::check_guard(&state) {
+                    if assessment.is_blocked() {
+                        mismatches.push("check evidence is incomplete or failed".into());
+                    }
+                }
+            }
+            Err(error) => mismatches.push(error),
+        },
+        Err(error) => mismatches.push(format!("ledger unavailable: {error}")),
+    }
+    let valid = mismatches.is_empty();
+    Ok(json!({
+        "valid": valid,
+        "outcome": if valid { "READY" } else { "REFUSED" },
+        "reason": if valid {
+            json!({"code":"verified", "detail":"receipt matches the exact current ledger state"})
+        } else {
+            json!({"code":"receipt_mismatch", "detail": mismatches})
+        },
+        "mismatches": mismatches,
+        "format": receipt["format"]
+    }))
+}
+
+pub(crate) fn exit_receipt_path(
+    loaded: &Loaded,
+    requested: &str,
+) -> Result<std::path::PathBuf, String> {
+    let path = receipt_path(loaded, requested)?;
+    if path.exists() {
+        return Err("receipt output already exists; refusing to overwrite".into());
+    }
+    Ok(path)
+}
+
 /// Validate a v2 harness receipt before binding it to a run start event.
 pub(crate) fn for_run(loaded: &Loaded, requested: &str, plan: &Value) -> Result<Value, String> {
     let (relative, source) = read_state_bytes(loaded, requested)?;

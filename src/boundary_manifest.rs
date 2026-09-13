@@ -72,7 +72,7 @@ pub(crate) fn assert_current(loaded: &Loaded, plan: &Value) -> Result<(), String
     let bytes = project_path::secure_bytes(&loaded.control_root, path, "run boundary manifest")
         .map_err(|error| {
             format!(
-                "run boundary manifest is missing or unreadable: {error}; restore the exact file or use 'soulmate run supersede'"
+                "run boundary manifest is missing or unreadable: {error}; restore the exact file or use the run supersede command"
             )
         })?;
     let current = hash::bytes(&bytes);

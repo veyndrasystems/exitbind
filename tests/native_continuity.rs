@@ -203,12 +203,12 @@ fn ordinary_turns_and_invalid_or_unconfigured_inputs_remain_silent() {
 fn session_update_context_is_fresh_cache_bound_and_subagent_silent() {
     let fixture = Fixture::new("portable");
     let cache = fixture.base.join("cache/soulmate");
-    let next = format!("v{}.{}.{}-rc.{}", 0, 16, 0, 2);
+    let next = "v0.18.0";
     fs::create_dir_all(&cache).unwrap();
     fs::write(
         cache.join("update.json"),
         format!(
-            "{{\"checked_at\":{},\"channel\":\"all\",\"latest\":\"{next}\"}}",
+            "{{\"checked_at\":{},\"channel\":\"stable\",\"latest\":\"{next}\"}}",
             chrono::Utc::now().timestamp(),
         ),
     )
@@ -221,7 +221,7 @@ fn session_update_context_is_fresh_cache_bound_and_subagent_silent() {
     assert!(configured_text["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .unwrap()
-        .contains("soulmate update"));
+        .contains("Run `soulmate` update"));
     let configured_context = configured_text["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .unwrap();
@@ -231,12 +231,12 @@ fn session_update_context_is_fresh_cache_bound_and_subagent_silent() {
     let mut unconfigured = fixture.payload("SessionStart", "startup");
     unconfigured["cwd"] = json!(fixture.host.clone());
     let unconfigured = fixture.hook_with_update(&serde_json::to_vec(&unconfigured).unwrap(), true);
-    assert!(String::from_utf8_lossy(&unconfigured.stdout).contains("soulmate update"));
+    assert!(String::from_utf8_lossy(&unconfigured.stdout).contains("Run `soulmate` update"));
 
     let mut subagent = fixture.payload("SubagentStart", "startup");
     subagent["agent_name"] = json!("worker");
     let subagent = fixture.hook_with_update(&serde_json::to_vec(&subagent).unwrap(), true);
-    assert!(!String::from_utf8_lossy(&subagent.stdout).contains("soulmate update"));
+    assert!(!String::from_utf8_lossy(&subagent.stdout).contains("Run `soulmate` update"));
 }
 
 #[test]
@@ -247,7 +247,7 @@ fn fresh_no_update_cache_stays_silent_without_curl() {
     fs::write(
         cache.join("update.json"),
         format!(
-            "{{\"checked_at\":{},\"channel\":\"all\"}}",
+            "{{\"checked_at\":{},\"channel\":\"stable\"}}",
             chrono::Utc::now().timestamp()
         ),
     )
@@ -277,7 +277,7 @@ fn failed_session_lookup_backs_off_and_opt_out_stays_silent() {
     fs::create_dir_all(&cache).unwrap();
     fs::write(
         cache.join("update.json"),
-        b"{\"checked_at\":0,\"channel\":\"all\",\"latest\":\"v0.14.0-rc.5\"}",
+        b"{\"checked_at\":0,\"channel\":\"stable\",\"latest\":\"v0.14.0\"}",
     )
     .unwrap();
     let calls = fixture.host.join("failed-curl-calls");
@@ -291,26 +291,26 @@ fn failed_session_lookup_backs_off_and_opt_out_stays_silent() {
     let payload = fixture.payload("SessionStart", "startup");
     let failed = fixture.hook_with_update(&serde_json::to_vec(&payload).unwrap(), true);
     assert!(failed.status.success());
-    assert!(!String::from_utf8_lossy(&failed.stdout).contains("soulmate update"));
+    assert!(!String::from_utf8_lossy(&failed.stdout).contains("Run `soulmate` update"));
     let cache_text = fs::read_to_string(cache.join("update.json")).unwrap();
     assert!(cache_text.contains("backoff_until"));
     let calls_before = fs::read_to_string(&calls).unwrap();
     let backed_off = fixture.hook_with_update(&serde_json::to_vec(&payload).unwrap(), true);
-    assert!(!String::from_utf8_lossy(&backed_off.stdout).contains("soulmate update"));
+    assert!(!String::from_utf8_lossy(&backed_off.stdout).contains("Run `soulmate` update"));
     assert_eq!(fs::read_to_string(&calls).unwrap(), calls_before);
     let opted_out = fixture.hook(&serde_json::to_vec(&payload).unwrap());
-    assert!(!String::from_utf8_lossy(&opted_out.stdout).contains("soulmate update"));
+    assert!(!String::from_utf8_lossy(&opted_out.stdout).contains("Run `soulmate` update"));
 }
 
 #[test]
 fn stale_session_cache_refreshes_with_local_fake_curl() {
     let fixture = Fixture::new("portable");
     let cache = fixture.base.join("cache/soulmate");
-    let next = format!("v{}.{}.{}-rc.{}", 0, 16, 0, 2);
+    let next = "v0.18.0";
     fs::create_dir_all(&cache).unwrap();
     fs::write(
         cache.join("update.json"),
-        b"{\"checked_at\":0,\"channel\":\"all\",\"latest\":\"v0.14.0-rc.5\"}",
+        b"{\"checked_at\":0,\"channel\":\"stable\",\"latest\":\"v0.14.0\"}",
     )
     .unwrap();
     let calls = fixture.host.join("curl-calls");
@@ -318,7 +318,7 @@ fn stale_session_cache_refreshes_with_local_fake_curl() {
     fs::write(
         &curl,
         format!(
-            "#!/bin/sh\nprintf x >> '{}'\nout=\"\"; for arg in \"$@\"; do out=\"$arg\"; done\nprintf '%s' '[{{\"tag_name\":\"{next}\",\"draft\":false,\"prerelease\":true}}]' > \"$out\"\n",
+            "#!/bin/sh\nprintf x >> '{}'\nout=\"\"; for arg in \"$@\"; do out=\"$arg\"; done\nprintf '%s' '[{{\"tag_name\":\"{next}\",\"draft\":false,\"prerelease\":false}}]' > \"$out\"\n",
             calls.display(),
         ),
     )
@@ -330,5 +330,5 @@ fn stale_session_cache_refreshes_with_local_fake_curl() {
     );
     assert!(output.status.success());
     assert!(calls.is_file());
-    assert!(String::from_utf8_lossy(&output.stdout).contains("soulmate update"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Run `soulmate` update"));
 }

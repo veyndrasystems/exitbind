@@ -12,7 +12,7 @@ The executable evidence is
 
 | Measured item | Low-level `run` path | High-level `work` path |
 | --- | ---: | ---: |
-| Soulmate process calls | 6 | 6 |
+| Exitbind process calls | 6 | 6 |
 | Raw protocol identifier occurrences in command inputs | 11 | 0 |
 | Caller-selected bookkeeping inputs | 10 | 0 |
 | Observed protocol errors or retries | 0 | 0 |

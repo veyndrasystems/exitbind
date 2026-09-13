@@ -34,16 +34,21 @@ fn exact_assignment(name: &str, value: &str) -> String {
 }
 
 pub(crate) fn read_command(action: &str, config: &str, ledger: &str) -> String {
+    let command = if crate::producer::exitbind_surface() {
+        "exitbind"
+    } else {
+        "soulmate"
+    };
     let format = if action == "next" { " --text" } else { "" };
     if has_control(config) || has_control(ledger) {
         return format!(
-            "{}; {}; soulmate run {action}{format} --config=\"$__sm_config\" -- \"$__sm_ledger\"",
+            "{}; {}; {command} run {action}{format} --config=\"$__sm_config\" -- \"$__sm_ledger\"",
             exact_assignment("__sm_config", config),
             exact_assignment("__sm_ledger", ledger),
         );
     }
     format!(
-        "soulmate run {action}{format} --config={} -- {}",
+        "{command} run {action}{format} --config={} -- {}",
         shell_quote(config),
         shell_quote(ledger)
     )

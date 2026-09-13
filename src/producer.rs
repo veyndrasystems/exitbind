@@ -3,11 +3,35 @@
 use serde_json::{json, Value};
 
 pub(crate) fn evidence() -> Value {
+    let name = if exitbind_surface() {
+        "exitbind"
+    } else {
+        "soulmate"
+    };
     json!({
-        "name": "soulmate",
+        "name": name,
         "version": env!("CARGO_PKG_VERSION"),
-        "commit": option_env!("SOULMATE_BUILD_COMMIT"),
+        "commit": option_env!("EXITBIND_BUILD_COMMIT").or(option_env!("SOULMATE_BUILD_COMMIT")),
     })
+}
+
+pub(crate) fn evidence_for_version(version: u64) -> Value {
+    if version <= 4 {
+        json!({"name":"soulmate","version":env!("CARGO_PKG_VERSION"),"commit":option_env!("SOULMATE_BUILD_COMMIT")})
+    } else {
+        evidence()
+    }
+}
+
+pub(crate) fn exitbind_surface() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .map(|name| name == "exitbind")
+        })
+        .unwrap_or(false)
 }
 
 pub(crate) fn valid(value: &Value) -> bool {
@@ -18,7 +42,8 @@ pub(crate) fn valid(value: &Value) -> bool {
         && object.contains_key("name")
         && object.contains_key("version")
         && object.contains_key("commit")
-        && value["name"] == "soulmate"
+        // Historical v1-v4 records retain their original producer identity.
+        && matches!(value["name"].as_str(), Some("exitbind" | "soulmate"))
         && value["version"]
             .as_str()
             .is_some_and(|version| !version.trim().is_empty())

@@ -83,8 +83,9 @@ fn packet(state: &Value, agent: &Value, upstream: &[Value]) -> Value {
         .take(12)
         .collect::<String>();
     assignment["artifactRootHint"] = json!("state");
+    let state_namespace = crate::project_layout::state_namespace();
     assignment["artifactPathHint"] = json!(format!(
-        ".soulmate/artifacts/{run_short}-{}-stage-{}-attempt-{}.md",
+        "{state_namespace}/artifacts/{run_short}-{}-stage-{}-attempt-{}.md",
         agent["name"].as_str().unwrap_or("agent"),
         state["currentStage"],
         state["attempt"]

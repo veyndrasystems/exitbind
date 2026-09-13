@@ -130,8 +130,11 @@ pub(crate) fn ledger_path(
         .to_str()
         .ok_or("ledger path is not valid UTF-8")?
         .replace('\\', "/");
-    let lock = if relative.starts_with(".soulmate/runs/") {
-        root.join(".soulmate/locks")
+    let namespace = crate::project_layout::state_namespace();
+    let runs_prefix = format!("{namespace}/runs/");
+    let lock = if relative.starts_with(&runs_prefix) {
+        root.join(namespace)
+            .join("locks")
             .join(format!("run-v1-{}.lock", hash::text(&relative)))
     } else {
         PathBuf::from(format!("{}.lock", expected.display()))

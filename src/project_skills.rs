@@ -4,8 +4,10 @@ use std::path::{Path, PathBuf};
 
 const SOULMATE: &str = include_str!("../skills/soulmate/SKILL.md");
 const SOULMATE_REFERENCE: &str = include_str!("../skills/soulmate/references/manual.md");
+const EXITBIND: &str = include_str!("../skills/exitbind/SKILL.md");
 const COFFEE: &str = include_str!("../skills/coffee/SKILL.md");
 const SKILL_MARKER: &str = "<!-- soulmate-managed-skill:v1 -->";
+const EXITBIND_SKILL_MARKER: &str = "<!-- exitbind-managed-skill:v1 -->";
 const PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,8 +65,13 @@ pub(crate) fn activate(control: &Path, coffee: bool) -> Result<(), String> {
         .iter()
         .find(|destination| destination.state == SkillRefreshState::Refreshed)
     {
+        let command = if crate::producer::exitbind_surface() {
+            "exitbind"
+        } else {
+            "soulmate"
+        };
         return Err(format!(
-            "project skill differs from embedded bytes: {}; inspect it and explicitly run soulmate init --refresh-skills --root {}",
+            "project skill differs from embedded bytes: {}; inspect it and explicitly run {command} init --refresh-skills --root {}",
             destination.path.display(),
             control.display()
         ));
@@ -116,27 +123,46 @@ pub(crate) fn refresh(control: &Path, coffee: bool) -> Result<Vec<SkillRefreshSt
 }
 
 pub(crate) fn diagnose(control: &Path) -> Vec<SkillObservation> {
-    [
-        (
-            "Soulmate",
-            ".agents/skills/soulmate/SKILL.md",
-            SOULMATE,
-            false,
-        ),
-        (
-            "Soulmate",
-            ".claude/skills/soulmate/SKILL.md",
-            SOULMATE,
-            false,
-        ),
-        ("Coffee", ".agents/skills/coffee/SKILL.md", COFFEE, true),
-        ("Coffee", ".claude/skills/coffee/SKILL.md", COFFEE, true),
-    ]
-    .into_iter()
-    .map(|(skill, path, content, optional)| {
-        inspect_observation(control, skill, path, content, optional)
-    })
-    .collect()
+    let exitbind = crate::producer::exitbind_surface();
+    let observations = if exitbind {
+        vec![
+            (
+                "Exitbind",
+                ".agents/skills/exitbind/SKILL.md",
+                EXITBIND,
+                false,
+            ),
+            (
+                "Exitbind",
+                ".claude/skills/exitbind/SKILL.md",
+                EXITBIND,
+                false,
+            ),
+        ]
+    } else {
+        vec![
+            (
+                "Soulmate",
+                ".agents/skills/soulmate/SKILL.md",
+                SOULMATE,
+                false,
+            ),
+            (
+                "Soulmate",
+                ".claude/skills/soulmate/SKILL.md",
+                SOULMATE,
+                false,
+            ),
+            ("Coffee", ".agents/skills/coffee/SKILL.md", COFFEE, true),
+            ("Coffee", ".claude/skills/coffee/SKILL.md", COFFEE, true),
+        ]
+    };
+    observations
+        .into_iter()
+        .map(|(skill, path, content, optional)| {
+            inspect_observation(control, skill, path, content, optional)
+        })
+        .collect()
 }
 
 fn inspect_observation(
@@ -188,13 +214,42 @@ fn inspect_observed_bytes(
 }
 
 fn has_managed_marker(bytes: &[u8]) -> bool {
-    let marker = SKILL_MARKER.as_bytes();
-    bytes
-        .split(|byte| *byte == b'\n')
-        .any(|line| line == marker || line.strip_suffix(b"\r").is_some_and(|line| line == marker))
+    let markers = [SKILL_MARKER.as_bytes(), EXITBIND_SKILL_MARKER.as_bytes()];
+    bytes.split(|byte| *byte == b'\n').any(|line| {
+        markers.iter().any(|marker| {
+            line == *marker || line.strip_suffix(b"\r").is_some_and(|line| line == *marker)
+        })
+    })
 }
 
 fn selected_destinations(control: &Path, coffee: bool) -> Result<Vec<SkillDestination>, String> {
+    let exitbind = std::env::current_exe()
+        .ok()
+        .and_then(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .map(|name| name == "exitbind")
+        })
+        .unwrap_or(false);
+    if exitbind {
+        let mut destinations = Vec::new();
+        for base in [".agents/skills", ".claude/skills"] {
+            let path = control.join(base).join("exitbind").join("SKILL.md");
+            validate_managed_directory(
+                control,
+                path.parent().ok_or("project skill asset has no parent")?,
+            )?;
+            let state = inspect_skill(&path, EXITBIND)?;
+            destinations.push(SkillDestination {
+                path,
+                content: EXITBIND.to_owned(),
+                label: format!("{base}/exitbind/SKILL.md"),
+                skill: "Exitbind",
+                state,
+            });
+        }
+        return Ok(destinations);
+    }
     let mut assets = vec![
         ("soulmate", "SKILL.md", SOULMATE),
         ("soulmate", "references/manual.md", SOULMATE_REFERENCE),

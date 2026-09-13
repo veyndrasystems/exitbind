@@ -28,6 +28,9 @@ pub fn reduce(events: &[Value]) -> Result<Value, String> {
     if let Some(policy) = first.get("checkPolicy") {
         state["checkPolicy"] = policy.clone();
     }
+    if let Some(subject) = first.get("subject") {
+        state["subject"] = subject.clone();
+    }
     for (index, event) in events.iter().enumerate().skip(1) {
         validate_event(event, events.get(index - 1), index + 1)?;
         if event["runId"] != first["runId"] {
@@ -47,7 +50,7 @@ pub fn validate_event(event: &Value, previous: Option<&Value>, line: usize) -> R
         .as_object()
         .ok_or_else(|| format!("invalid run ledger line {line}: event must be an object"))?;
     let version = event["version"].as_u64();
-    if !matches!(version, Some(1..=4)) || event["kind"] != "run" {
+    if !matches!(version, Some(1..=5)) || event["kind"] != "run" {
         return Err(format!(
             "invalid run ledger line {line}: invalid event header"
         ));
@@ -60,8 +63,12 @@ pub fn validate_event(event: &Value, previous: Option<&Value>, line: usize) -> R
     if event
         .get("producer")
         .is_some_and(|producer| !crate::producer::valid(producer))
-        || (matches!(version, Some(2..=4))
-            && !event.get("producer").is_some_and(crate::producer::valid))
+        || (version == Some(1)
+            && event
+                .get("producer")
+                .is_some_and(|producer| producer["name"] != "soulmate"))
+        || (matches!(version, Some(2..=4)) && event["producer"]["name"] != "soulmate")
+        || (version == Some(5) && event["producer"]["name"] != "exitbind")
     {
         return Err(format!("invalid run ledger line {line}: invalid producer"));
     }
@@ -79,7 +86,7 @@ pub fn validate_event(event: &Value, previous: Option<&Value>, line: usize) -> R
             "invalid run ledger line {line}: ledger must begin with start"
         ));
     }
-    if !matches!(version, Some(3 | 4)) && matches!(action, "check" | "protect") {
+    if !matches!(version, Some(3..=5)) && matches!(action, "check" | "protect") {
         return Err(format!(
             "invalid run ledger line {line}: value-proof actions require version 3"
         ));
@@ -135,7 +142,7 @@ pub fn validate_start(event: &Value, line: usize) -> Result<(), String> {
 }
 
 fn validate_start_version(event: &Value, line: usize, version: u64) -> Result<(), String> {
-    if !matches!(version, 1..=4) {
+    if !matches!(version, 1..=5) {
         return Err(format!(
             "invalid run ledger line {line}: invalid event version"
         ));
@@ -159,6 +166,11 @@ fn validate_start_version(event: &Value, line: usize, version: u64) -> Result<()
     if !is_sha(event["configSha256"].as_str()) {
         return Err(format!(
             "invalid run ledger line {line}: invalid config hash"
+        ));
+    }
+    if version == 5 && !valid_subject(event.get("subject")) {
+        return Err(format!(
+            "invalid run ledger line {line}: checked start requires a valid subject"
         ));
     }
     let plan = &event["plan"];
@@ -251,6 +263,10 @@ fn validate_start_version(event: &Value, line: usize, version: u64) -> Result<()
             return Err(format!(
                 "invalid run ledger line {line}: checked run requires a worker stage"
             ));
+        }
+    } else if version == 5 {
+        if let Some(policy) = event.get("checkPolicy") {
+            crate::run_value::policy_from_value(policy, line)?;
         }
     } else if event.get("checkPolicy").is_some() {
         return Err(format!(
@@ -369,6 +385,9 @@ fn apply_check(state: &mut Value, event: &Value) -> Result<(), String> {
     }
     crate::run_value::validate_check_against_state(state, event, 0)
         .map_err(|error| error.replacen("line 0", "state", 1))?;
+    if state["version"] == 5 && event["subjectSha256"] != state["subject"]["sha256"] {
+        return Err("check is bound to a stale subject".into());
+    }
     state["checks"]
         .as_array_mut()
         .ok_or("run state checks are invalid")?
@@ -379,6 +398,9 @@ fn apply_check(state: &mut Value, event: &Value) -> Result<(), String> {
 fn apply_protection(state: &mut Value, event: &Value) -> Result<(), String> {
     crate::run_value::validate_protection_against_state(state, event, 0)
         .map_err(|error| error.replacen("line 0", "state", 1))?;
+    if state["version"] == 5 && event["subjectSha256"] != state["subject"]["sha256"] {
+        return Err("protection is bound to a stale subject".into());
+    }
     state["protections"]
         .as_array_mut()
         .ok_or("run state protections are invalid")?
@@ -405,6 +427,19 @@ fn apply_submission(state: &mut Value, event: &Value) -> Result<(), String> {
     {
         return Err("submission is out of order".into());
     }
+    if state["version"] == 5 {
+        let expected = if event["role"] == "worker" && event["outcome"] == "completed" {
+            subject_for_submission(state, &assignment, &event["artifact"])["sha256"].clone()
+        } else {
+            state["subject"]["sha256"].clone()
+        };
+        if event["subjectSha256"] != expected {
+            return Err("submission is bound to a stale subject".into());
+        }
+        if event["role"] == "worker" && event["outcome"] == "completed" {
+            state["subject"] = subject_for_submission(state, &assignment, &event["artifact"]);
+        }
+    }
     let role = event["role"].as_str().ok_or("submission role is invalid")?;
     let outcome = event["outcome"]
         .as_str()
@@ -428,6 +463,18 @@ fn apply_submission(state: &mut Value, event: &Value) -> Result<(), String> {
         ));
     }
     if role == "lead" && outcome == "accepted" {
+        if state["version"] == 5
+            && state.get("checkPolicy").is_some()
+            && !state["submissions"].as_array().is_some_and(|submissions| {
+                submissions.iter().any(|submission| {
+                    submission["attempt"] == state["attempt"]
+                        && submission["role"] == "reviewer"
+                        && submission["outcome"] == "approved"
+                })
+            })
+        {
+            return Err("canonical acceptance requires reviewer approval".into());
+        }
         let assessment = crate::run_value::check_guard(state)?;
         if assessment.is_blocked() {
             let detail = assessment.reason().map_or(
@@ -514,9 +561,12 @@ fn reject_unknown(
         if version == 2 {
             allowed.push("harnessReceipt");
         }
-        if matches!(version, 3 | 4) {
+        if matches!(version, 3..=5) {
             allowed.push("harnessReceipt");
             allowed.push("checkPolicy");
+        }
+        if version == 5 {
+            allowed.push("subject");
         }
         return object
             .keys()
@@ -527,7 +577,7 @@ fn reject_unknown(
                 ))
             });
     } else if action == "submit" {
-        &[
+        let mut allowed = vec![
             "version",
             "kind",
             "producer",
@@ -542,8 +592,36 @@ fn reject_unknown(
             "previousEventSha256",
             "timestamp",
             "eventSha256",
-        ]
+        ];
+        if version == 5 {
+            allowed.push("subjectSha256");
+        }
+        return reject_unknown_fields(object, &allowed, line);
     } else if action == "check" {
+        if version == 5 {
+            return reject_unknown_fields(
+                object,
+                &[
+                    "version",
+                    "kind",
+                    "producer",
+                    "action",
+                    "runId",
+                    "subjectSha256",
+                    "targetEventSha256",
+                    "checkCommand",
+                    "checkCommandSha256",
+                    "origin",
+                    "acquisition",
+                    "result",
+                    "durationMs",
+                    "previousEventSha256",
+                    "timestamp",
+                    "eventSha256",
+                ],
+                line,
+            );
+        }
         if version == 4 {
             return reject_unknown_fields(
                 object,
@@ -584,6 +662,31 @@ fn reject_unknown(
             "eventSha256",
         ]
     } else {
+        if version == 5 {
+            return reject_unknown_fields(
+                object,
+                &[
+                    "version",
+                    "kind",
+                    "producer",
+                    "action",
+                    "runId",
+                    "subjectSha256",
+                    "stage",
+                    "attempt",
+                    "actor",
+                    "role",
+                    "attemptedOutcome",
+                    "reason",
+                    "checkEvidence",
+                    "origin",
+                    "previousEventSha256",
+                    "timestamp",
+                    "eventSha256",
+                ],
+                line,
+            );
+        }
         if version == 4 {
             return reject_unknown_fields(
                 object,
@@ -693,9 +796,72 @@ fn native_name(value: Option<&str>) -> bool {
 fn is_timestamp(value: Option<&str>) -> bool {
     value.is_some_and(|x| x.contains('T') && timestamp_ms(Some(x)) != i64::MIN)
 }
+fn valid_subject(value: Option<&Value>) -> bool {
+    let Some(value) = value else { return false };
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    object.len() == 10
+        && value["version"] == 1
+        && is_sha(value["runId"].as_str())
+        && is_sha(value["goalSha256"].as_str())
+        && is_sha(value["planSha256"].as_str())
+        && is_sha(value["configSha256"].as_str())
+        && value["attempt"].as_u64().is_some()
+        && (value["previousSubjectSha256"].is_null()
+            || is_sha(value["previousSubjectSha256"].as_str()))
+        && (value["workerArtifactSha256"].is_null()
+            || is_sha(value["workerArtifactSha256"].as_str()))
+        && (value["transitionSha256"].is_null() || is_sha(value["transitionSha256"].as_str()))
+        && is_sha(value["sha256"].as_str())
+        && crate::hash::value(&without(value, "sha256")) == value["sha256"]
+}
+
+pub(crate) fn subject_for_submission(state: &Value, assignment: &Value, artifact: &Value) -> Value {
+    let previous = state["subject"]["sha256"].clone();
+    let artifact_sha = artifact["sha256"].clone();
+    let attempt = assignment["attempt"].as_u64().unwrap_or_default();
+    let transition = crate::hash::value(&json!({
+        "runId": state["runId"], "previousSubjectSha256": previous, "stage": assignment["stage"], "attempt": attempt,
+        "agent": assignment["agent"], "artifactSha256": artifact_sha,
+    }));
+    let mut subject = state["subject"].clone();
+    subject["attempt"] = json!(attempt);
+    subject["previousSubjectSha256"] = previous;
+    subject["workerArtifactSha256"] = artifact_sha;
+    subject["transitionSha256"] = json!(transition);
+    let sha = crate::hash::value(&without(&subject, "sha256"));
+    subject["sha256"] = json!(sha);
+    subject
+}
 fn timestamp_ms(value: Option<&str>) -> i64 {
     value
         .and_then(|x| chrono::DateTime::parse_from_rfc3339(x).ok())
         .map(|x| x.timestamp_millis())
         .unwrap_or(i64::MIN)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::subject_for_submission;
+    use serde_json::json;
+
+    #[test]
+    fn subject_chain_binds_prior_result_and_changes_for_each_worker_result() {
+        let state = json!({"runId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","subject":{"version":1,"runId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","goalSha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","planSha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","configSha256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","attempt":0,"previousSubjectSha256":null,"workerArtifactSha256":null,"transitionSha256":null,"sha256":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}});
+        let assignment = json!({"stage":2,"attempt":1,"agent":"worker"});
+        let first = subject_for_submission(
+            &state,
+            &assignment,
+            &json!({"sha256":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}),
+        );
+        let second_state = json!({"runId":state["runId"],"subject":first});
+        let second = subject_for_submission(
+            &second_state,
+            &assignment,
+            &json!({"sha256":"1111111111111111111111111111111111111111111111111111111111111111"}),
+        );
+        assert_ne!(first["sha256"], second["sha256"]);
+        assert_eq!(second["previousSubjectSha256"], first["sha256"]);
+    }
 }
