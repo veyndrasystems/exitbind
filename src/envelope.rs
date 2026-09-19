@@ -70,6 +70,25 @@ pub fn plan(loaded: &Loaded, workflow_name: &str, goal: &str) -> Result<Value, S
                 "declaredBoundary": agent.boundary_value(),
             });
             attach_memory_references(loaded, &name, &mut selected_agent)?;
+            if role == "reviewer" && agent.runtime.fallback != "none" {
+                // Resolve the authorized substitution target now, so the ledger
+                // carries the identity a fallback execution would run under.
+                let target = loaded.agent(&agent.runtime.fallback).ok_or_else(|| {
+                    format!("unknown fallback agent '{}'", agent.runtime.fallback)
+                })?;
+                let target_profile = config::file(&loaded.control_root, &target.profile)?;
+                selected_agent["fallbackTarget"] = json!({
+                    "name": agent.runtime.fallback,
+                    "displayName": target.display_name.as_deref().unwrap_or(&agent.runtime.fallback),
+                    "nativeTaskName": target.native_name(&agent.runtime.fallback),
+                    "role": "reviewer",
+                    "purpose": target.purpose,
+                    "profile": config::rel(&loaded.control_root, &target_profile)?,
+                    "profileSha256": hash::file(&target_profile)?,
+                    "runtime": target.runtime_value(),
+                    "declaredBoundary": target.boundary_value(),
+                });
+            }
             selected.push(selected_agent);
         }
         let stage_number = stages.len() + 1;

@@ -49,6 +49,11 @@ pub fn write(
             if let Some(name) = agent["name"].as_str() {
                 names.insert(name.to_owned());
             }
+            // A fallback target is selected evidence even though it takes no
+            // stage slot; the receipt must cover its bytes too.
+            if let Some(name) = agent["fallbackTarget"]["name"].as_str() {
+                names.insert(name.to_owned());
+            }
         }
     }
 
@@ -599,18 +604,27 @@ fn plan_profiles(plan: &Value) -> Result<BTreeMap<String, Value>, String> {
             .as_array()
             .ok_or("run plan agents are missing")?
         {
-            let name = agent["name"]
-                .as_str()
-                .ok_or("run plan agent name is missing")?;
-            let value = json!({
-                "agent": name,
-                "path": agent["profile"],
-                "sha256": agent["profileSha256"],
-                "requestedRuntime": agent["runtime"],
-            });
-            if let Some(previous) = profiles.insert(name.to_owned(), value.clone()) {
-                if previous != value {
-                    return Err("run plan selects an agent with conflicting evidence".into());
+            // An authorized fallback target is a selected agent too: its bytes
+            // must be covered by the receipt even though it never takes a stage
+            // slot. It is recorded as requested, never as observed.
+            let mut selected = vec![agent];
+            if let Some(target) = agent.get("fallbackTarget") {
+                selected.push(target);
+            }
+            for selected in selected {
+                let name = selected["name"]
+                    .as_str()
+                    .ok_or("run plan agent name is missing")?;
+                let value = json!({
+                    "agent": name,
+                    "path": selected["profile"],
+                    "sha256": selected["profileSha256"],
+                    "requestedRuntime": selected["runtime"],
+                });
+                if let Some(previous) = profiles.insert(name.to_owned(), value.clone()) {
+                    if previous != value {
+                        return Err("run plan selects an agent with conflicting evidence".into());
+                    }
                 }
             }
         }

@@ -127,7 +127,7 @@ pub fn validate(config: &Value) -> Vec<String> {
     } else if let Some(agents) = agents {
         let mut native_names = BTreeMap::new();
         for (name, agent) in agents {
-            validate_agent(name, agent, &mut errors);
+            validate_agent(name, agent, agents, &mut errors);
             if agent.is_object() {
                 let native = native_name(name, agent);
                 if valid_native_name(&native) {
@@ -240,7 +240,12 @@ fn validate_orchestration(value: &Value, errors: &mut Vec<String>) {
     }
 }
 
-fn validate_agent(name: &str, value: &Value, errors: &mut Vec<String>) {
+fn validate_agent(
+    name: &str,
+    value: &Value,
+    agents: &Map<String, Value>,
+    errors: &mut Vec<String>,
+) {
     if !is_name(Some(name)) {
         errors.push(format!("agent name '{name}' is not portable"));
     }
@@ -333,11 +338,16 @@ fn validate_agent(name: &str, value: &Value, errors: &mut Vec<String>) {
         ));
     }
     if let Some(runtime) = agent.get("runtime") {
-        validate_runtime(name, runtime, errors);
+        validate_runtime(name, runtime, agents, errors);
     }
 }
 
-fn validate_runtime(name: &str, value: &Value, errors: &mut Vec<String>) {
+fn validate_runtime(
+    name: &str,
+    value: &Value,
+    agents: &Map<String, Value>,
+    errors: &mut Vec<String>,
+) {
     let Some(runtime) = value.as_object() else {
         errors.push(format!("agents.{name}.runtime must be an object"));
         return;
@@ -351,6 +361,15 @@ fn validate_runtime(name: &str, value: &Value, errors: &mut Vec<String>) {
         {
             errors.push(format!(
                 "agents.{name}.runtime.{field} must be a non-empty string"
+            ));
+        }
+    }
+    // "none" declines fallback; any other value must name another configured
+    // agent, so an authorized substitution can never dangle.
+    if let Some(fallback) = runtime.get("fallback").and_then(Value::as_str) {
+        if fallback != "none" && !agents.contains_key(fallback) {
+            errors.push(format!(
+                "agents.{name}.runtime.fallback must be \"none\" or the name of a configured agent"
             ));
         }
     }

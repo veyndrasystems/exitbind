@@ -51,12 +51,70 @@ pub(crate) fn pending(state: &Value) -> Vec<Value> {
         .as_u64()
         .unwrap_or(agents.len() as u64)
         .max(1) as usize;
-    agents
+    let mut assignments: Vec<Value> = agents
         .iter()
         .filter(|agent| !submitted.contains(agent["name"].as_str().unwrap_or("")))
         .map(|agent| packet(state, agent, &upstream))
         .take(limit)
-        .collect()
+        .collect();
+    // A reviewer target that could not execute is re-issued against its
+    // authorized fallback target: same stage, attempt, and role — only the
+    // execution target is substituted.  At most one substitution per
+    // stage+attempt is ever issued.
+    for agent in agents {
+        let Some(target) = agent
+            .get("fallbackTarget")
+            .filter(|target| target.is_object())
+        else {
+            continue;
+        };
+        let name = agent["name"].as_str().unwrap_or("");
+        let unavailable = submissions.iter().filter(|event| {
+            event["stage"] == state["currentStage"]
+                && event["attempt"] == state["attempt"]
+                && event["agent"] == name
+                && event["outcome"] == "unavailable"
+        });
+        let Some(primary) = unavailable.last() else {
+            continue;
+        };
+        let target_name = target["name"].as_str().unwrap_or("");
+        let target_submitted = submissions.iter().any(|event| {
+            event["stage"] == state["currentStage"]
+                && event["attempt"] == state["attempt"]
+                && event["agent"] == target_name
+        });
+        if target_submitted || submitted.contains(target_name) {
+            continue;
+        }
+        assignments.push(substitution(state, agent, target, primary, &upstream));
+    }
+    assignments
+}
+
+/// The substitution packet: the fallback target's own runtime and profile, with
+/// the primary's operational reason carried so the substitution is legible
+/// without upgrading caller-reported identity into observed evidence.
+fn substitution(
+    state: &Value,
+    primary: &Value,
+    target: &Value,
+    unavailable: &Value,
+    upstream: &[Value],
+) -> Value {
+    let mut packet = packet(state, target, upstream);
+    packet["substitutedFrom"] = primary["name"].clone();
+    packet["substitutionReason"] = unavailable["fallback"]["reason"].clone();
+    // Marks this packet as already-substituted so a second operational failure
+    // is bounded to blocked rather than opening another target.
+    packet["fallbackTarget"] = json!({
+        "name": target["name"],
+        "substitutedFrom": primary["name"],
+    });
+    if let Some(display) = primary.get("displayName") {
+        packet["substitutedFromDisplayName"] = display.clone();
+    }
+    packet
 }
 
 fn packet(state: &Value, agent: &Value, upstream: &[Value]) -> Value {
@@ -99,6 +157,14 @@ fn packet(state: &Value, agent: &Value, upstream: &[Value]) -> Value {
     }
     if let Some(policy) = state.get("checkPolicy") {
         assignment["checkPolicy"] = policy.clone();
+    }
+    if let Some(target) = agent
+        .get("fallbackTarget")
+        .filter(|target| target.is_object())
+    {
+        // The authorized substitution target travels with the primary packet so
+        // a standby target's identity is never guessed at execution time.
+        assignment["fallbackTarget"] = target.clone();
     }
     assignment
 }

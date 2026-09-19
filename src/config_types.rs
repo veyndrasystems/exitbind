@@ -55,6 +55,8 @@ pub struct RuntimeConfig {
     pub model: Option<String>,
     #[serde(rename = "reasoningEffort", default)]
     pub reasoning_effort: Option<String>,
+    /// "none" declines fallback; any other value names another configured agent
+    /// authorized to re-execute this role's contract if this target cannot run.
     #[serde(default = "default_fallback")]
     pub fallback: String,
 }
