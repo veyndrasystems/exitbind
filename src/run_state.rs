@@ -237,23 +237,15 @@ fn validate_start_version(event: &Value, line: usize, version: u64) -> Result<()
                     "invalid run ledger line {line}: invalid selected agent evidence"
                 ));
             }
-            if let Some(target) = agent.get("fallbackTarget") {
+            if let Some(binding) = agent.get("fallbackRuntime") {
                 if version < 7 {
                     return Err(format!(
-                        "invalid run ledger line {line}: fallback target requires v7"
+                        "invalid run ledger line {line}: fallback runtime requires v7"
                     ));
                 }
-                if agent["role"] != "reviewer"
-                    || target.as_object().is_none()
-                    || target["name"].as_str().map_or(true, str::is_empty)
-                    || target["role"] != "reviewer"
-                    || !relative(target["profile"].as_str())
-                    || !is_sha(target["profileSha256"].as_str())
-                    || !target["runtime"].is_object()
-                    || !target["declaredBoundary"].is_object()
-                {
+                if agent["role"] != "reviewer" || !runtime_binding(binding) {
                     return Err(format!(
-                        "invalid run ledger line {line}: invalid fallback target evidence"
+                        "invalid run ledger line {line}: invalid fallback runtime evidence"
                     ));
                 }
             }
@@ -440,9 +432,35 @@ pub fn validate_submission(event: &Value, line: usize) -> Result<(), String> {
     Ok(())
 }
 
-/// The single submit field carrying substitution provenance: on an `unavailable`
-/// reviewer submission it holds the bounded operational reason; on the
-/// substitution's own submission it also names the primary it replaces.
+/// An alternate execution binding: host, model, and reasoning effort only.
+///
+/// The shape is the whole guarantee. A binding carries no name, profile,
+/// purpose, or declared boundary, so nothing a fallback records can stand in
+/// for a reviewer contract. A wholly unspecified binding is admissible here
+/// because a primary runtime may request nothing at all, and the provenance
+/// must record that honestly rather than refuse the submission; configuration
+/// separately requires an authorized fallback to bind something.
+fn runtime_binding(value: &Value) -> bool {
+    let Some(binding) = value.as_object() else {
+        return false;
+    };
+    binding
+        .keys()
+        .all(|key| RUNTIME_BINDING_FIELDS.contains(&key.as_str()))
+        && binding.values().all(|value| {
+            value.is_null() || value.as_str().is_some_and(|entry| !entry.trim().is_empty())
+        })
+}
+
+const RUNTIME_BINDING_FIELDS: &[&str] = &["host", "model", "reasoningEffort"];
+
+/// The single submit field carrying substitution provenance.
+///
+/// On an `unavailable` reviewer submission it records the bounded operational
+/// reason and the execution binding that could not run. On the substitution's
+/// own verdict it records the same reason and the alternate binding that
+/// actually produced it. `identitySource` stays `host-reported` in both: the
+/// binding is what the caller declared, never something Exitbind observed.
 pub(crate) fn validate_fallback_binding(event: &Value, line: usize) -> Result<(), String> {
     let Some(fallback) = event.get("fallback") else {
         return Ok(());
@@ -453,10 +471,12 @@ pub(crate) fn validate_fallback_binding(event: &Value, line: usize) -> Result<()
         ));
     }
     let outcome = event["outcome"].as_str().unwrap_or_default();
+    let allowed = ["reason", "runtime", "identitySource", "substituted"];
     let object = fallback.as_object().filter(|object| {
-        object.get("reason").and_then(Value::as_str).is_some()
-            && (object.len() == 1
-                || (object.len() == 2 && object.get("from").and_then(Value::as_str).is_some()))
+        object.keys().all(|key| allowed.contains(&key.as_str()))
+            && object.get("reason").and_then(Value::as_str).is_some()
+            && object.get("runtime").is_some_and(runtime_binding)
+            && object.get("identitySource").and_then(Value::as_str) == Some("host-reported")
     });
     let Some(object) = object else {
         return Err(format!(
@@ -469,9 +489,10 @@ pub(crate) fn validate_fallback_binding(event: &Value, line: usize) -> Result<()
             "invalid run ledger line {line}: unbounded fallback reason"
         ));
     }
-    match (outcome, object.len()) {
-        ("unavailable", 1) => {}
-        ("approved" | "rework" | "blocked", 2) => {}
+    let substituted = object.get("substituted").and_then(Value::as_bool);
+    match (outcome, substituted) {
+        ("unavailable", None) => {}
+        ("approved" | "rework" | "blocked", Some(true)) => {}
         _ => {
             return Err(format!(
                 "invalid run ledger line {line}: fallback provenance does not match its submission"
@@ -690,9 +711,9 @@ fn apply_unavailable(state: &mut Value, event: &Value, assignment: &Value) -> Re
                 && submission["outcome"] == "unavailable"
         })
         .count();
-    // A substitution is a packet that replaced a target, not one that merely
-    // carries an authorized replacement.
-    let is_substitution = assignment["substitutedFrom"].is_string();
+    // A substitution is a packet re-issued onto the alternate binding, not one
+    // that merely carries an authorized alternative.
+    let is_substitution = assignment["substitution"].is_object();
     if is_substitution && prior_unavailable == 0 {
         return Err("a fallback reviewer requires a recorded primary unavailability".into());
     }
@@ -715,16 +736,16 @@ fn apply_unavailable(state: &mut Value, event: &Value, assignment: &Value) -> Re
         state["status"] = json!("blocked");
         return Ok(());
     }
-    // With no authorized target left to execute the same contract, the run has
+    // With no authorized binding left to execute the same contract, the run has
     // no admissible reviewer and stays blocked.
-    if authorized_fallback_target(state, event["agent"].as_str().unwrap_or("")).is_none() {
+    if authorized_fallback_runtime(state, event["agent"].as_str().unwrap_or("")).is_none() {
         state["status"] = json!("blocked");
     }
     Ok(())
 }
 
-/// The fallback target the plan authorized for `agent`, if any.
-fn authorized_fallback_target<'a>(state: &'a Value, agent: &str) -> Option<&'a Value> {
+/// The alternate execution binding the plan authorized for `agent`, if any.
+fn authorized_fallback_runtime<'a>(state: &'a Value, agent: &str) -> Option<&'a Value> {
     let current = state["currentStage"].as_u64()?;
     state["plan"]["stages"]
         .as_array()?
@@ -733,8 +754,8 @@ fn authorized_fallback_target<'a>(state: &'a Value, agent: &str) -> Option<&'a V
         .as_array()?
         .iter()
         .find(|selected| selected["name"].as_str() == Some(agent))?
-        .get("fallbackTarget")
-        .filter(|target| target.is_object())
+        .get("fallbackRuntime")
+        .filter(|binding| binding.is_object())
 }
 
 fn reject_unknown(
@@ -1085,6 +1106,12 @@ mod tests {
 
     const SHA: &str = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 
+    /// The alternate execution binding: where a review runs, and nothing that
+    /// could carry a second reviewer contract.
+    fn binding() -> serde_json::Value {
+        json!({"host": "claude", "model": "alternate-review", "reasoningEffort": "high"})
+    }
+
     fn reviewer_state() -> serde_json::Value {
         json!({
             "status": "running",
@@ -1092,7 +1119,7 @@ mod tests {
             "attempt": 1,
             "plan": {"version":1,"maxParallel":1,"stages":[
                 {"stage":1,"agents":[{"role":"worker","name":"worker"}]},
-                {"stage":2,"agents":[{"role":"reviewer","name":"reviewer","fallbackTarget":{"name":"standby"}}]},
+                {"stage":2,"agents":[{"role":"reviewer","name":"reviewer","fallbackRuntime":binding()}]},
             ]},
             "submissions": []
         })
@@ -1102,7 +1129,7 @@ mod tests {
         json!({
             "stage":2,"attempt":1,"agent":agent,"role":"reviewer","outcome":"unavailable",
             "artifact":{"path":"a.md","sha256":SHA},"eventSha256":SHA,
-            "fallback":{"reason":"provider_quota"},
+            "fallback":{"reason":"provider_quota","runtime":binding(),"identitySource":"host-reported"},
         })
     }
 
@@ -1118,7 +1145,7 @@ mod tests {
             }, {
                 "stage":2,"attempt":1,"agent":"reviewer","role":"reviewer","outcome":verdict,
             }]);
-            let primary = json!({"stage":2,"attempt":1,"agent":"reviewer","role":"reviewer","fallbackTarget":{"name":"standby"}});
+            let primary = json!({"stage":2,"attempt":1,"agent":"reviewer","role":"reviewer","fallbackRuntime":binding()});
             let error = apply_unavailable(&mut state, &unavailable("reviewer"), &primary)
                 .expect_err("a verdict must not be shopped away");
             assert!(
@@ -1134,17 +1161,15 @@ mod tests {
     #[test]
     fn primary_unavailability_is_non_terminal_and_one_substitution_is_bounded() {
         let mut state = reviewer_state();
-        let primary =
-            json!({"stage":2,"attempt":1,"agent":"reviewer","fallbackTarget":{"name":"standby"}});
+        let primary = json!({"stage":2,"attempt":1,"agent":"reviewer","fallbackRuntime":binding()});
         apply_unavailable(&mut state, &unavailable("reviewer"), &primary).unwrap();
         assert_eq!(state["status"], "running");
         assert_eq!(state["currentStage"], 2);
 
         // The substitute's own failure is bounded: the run blocks rather than
         // reaching for a third target.
-        let substitute =
-            json!({"stage":2,"attempt":1,"agent":"standby","substitutedFrom":"reviewer"});
-        apply_unavailable(&mut state, &unavailable("standby"), &substitute).unwrap();
+        let substitute = json!({"stage":2,"attempt":1,"agent":"reviewer","substitution":{"reason":"provider_quota"}});
+        apply_unavailable(&mut state, &unavailable("reviewer"), &substitute).unwrap();
         assert_eq!(state["status"], "blocked");
     }
 

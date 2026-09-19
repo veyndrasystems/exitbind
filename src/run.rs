@@ -120,7 +120,7 @@ pub fn start_with_policy(
         let version = if crate::producer::exitbind_surface() {
             // A run that authorizes provider-quota fallback records fallback
             // provenance, which only the v7 submit shape can carry.
-            if has_fallback_target(&plan) {
+            if has_fallback_runtime(&plan) {
                 7
             } else {
                 6
@@ -1260,7 +1260,7 @@ pub fn supersede_with_policy(
             "configSha256": claim.value["oldConfigSha256"]
         });
         let version = if crate::producer::exitbind_surface() {
-            if has_fallback_target(&plan) {
+            if has_fallback_runtime(&plan) {
                 7
             } else {
                 6
@@ -1498,23 +1498,25 @@ fn has_worker_stage(plan: &Value) -> bool {
     })
 }
 
-/// Whether any selected stage agent carries an authorized fallback target.
-fn has_fallback_target(plan: &Value) -> bool {
+/// Whether any selected stage agent carries an authorized alternate binding.
+fn has_fallback_runtime(plan: &Value) -> bool {
     plan["stages"].as_array().is_some_and(|stages| {
         stages.iter().any(|stage| {
             stage["agents"].as_array().is_some_and(|agents| {
                 agents
                     .iter()
-                    .any(|agent| agent.get("fallbackTarget").is_some())
+                    .any(|agent| agent.get("fallbackRuntime").is_some())
             })
         })
     })
 }
 
 /// Build the fallback provenance a submit event carries, if this submission is
-/// an operational unavailability or the substitution that answers one.  The
-/// reason is a bounded code chosen by the caller, never parsed from vendor
-/// prose, and the value stays caller-reported: nothing here observes a host.
+/// an operational unavailability or the substitution that answers one.
+///
+/// The reason is a bounded code chosen by the caller, never parsed from vendor
+/// prose, and the binding is recorded as `host-reported`: it is what the caller
+/// declared it would run, not something Exitbind observed a provider execute.
 fn fallback_provenance(
     assignment: &Value,
     outcome: &str,
@@ -1534,12 +1536,22 @@ fn fallback_provenance(
         if version < 7 {
             return Ok(None);
         }
-        return Ok(Some(json!({"reason": reason})));
-    }
-    if let Some(reason) = assignment["substitutionReason"].as_str() {
+        // The binding that could not execute, so the ledger answers which
+        // execution identity was unavailable and not merely that one was.
         return Ok(Some(json!({
             "reason": reason,
-            "from": assignment["substitutedFrom"],
+            "runtime": crate::run_assignment::binding(&assignment["runtime"]),
+            "identitySource": "host-reported",
+        })));
+    }
+    if let Some(substitution) = assignment["substitution"].as_object() {
+        // The alternate binding that actually produced this verdict, under the
+        // same reviewer contract the primary carried.
+        return Ok(Some(json!({
+            "reason": substitution["reason"],
+            "runtime": substitution["runtime"],
+            "identitySource": "host-reported",
+            "substituted": true,
         })));
     }
     Ok(None)
@@ -1585,11 +1597,6 @@ fn assert_no_drift(loaded: &Loaded, state: &Value) -> Result<(), String> {
             .ok_or("validated run stage has no agents")?;
         for selected in agents {
             let name = selected["name"].as_str().unwrap_or("");
-            if let Some(target) = selected.get("fallbackTarget").filter(|t| t.is_object()) {
-                // The authorized substitution target is part of the selected
-                // plan, so its profile and runtime drift like the primary's.
-                assert_selected_agent(loaded, target)?;
-            }
             if !seen.insert(name) {
                 continue;
             }
@@ -1621,8 +1628,8 @@ fn assert_no_drift(loaded: &Loaded, state: &Value) -> Result<(), String> {
 }
 
 /// A selected agent's profile bytes and requested runtime must still match the
-/// configuration that produced the plan.  Shared by primary stage agents and
-/// their authorized fallback targets.
+/// configuration that produced the plan.  The authorized alternate binding is
+/// part of that runtime, so it drifts with the contract it belongs to.
 fn assert_selected_agent(loaded: &Loaded, selected: &Value) -> Result<(), String> {
     let name = selected["name"].as_str().unwrap_or("");
     let configured = loaded

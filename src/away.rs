@@ -475,11 +475,11 @@ fn select_assignment(packet: &Value, agent: &str, require_harness: bool) -> Resu
     }
     let assignment = matches[0];
     // The native away runner launches the requested binding and records what it
-    // launched. It cannot guarantee that for a substitution, so a fallback
-    // target or an already-substituted packet is refused rather than executed
-    // as if it were the primary. Provider-quota fallback stays an interactive
-    // surface until this runner can carry its provenance.
-    if assignment.get("substitutedFrom").is_some() {
+    // launched. It cannot guarantee that for a substitution, so an
+    // already-substituted packet is refused rather than executed as if it were
+    // the primary. Provider-quota fallback stays an interactive surface until
+    // this runner can carry its provenance.
+    if assignment.get("substitution").is_some() {
         return Err(
             "fallback substitution is not supported by the native away runner; run it interactively"
                 .into(),

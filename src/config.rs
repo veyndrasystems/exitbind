@@ -127,7 +127,7 @@ pub fn validate(config: &Value) -> Vec<String> {
     } else if let Some(agents) = agents {
         let mut native_names = BTreeMap::new();
         for (name, agent) in agents {
-            validate_agent(name, agent, agents, &mut errors);
+            validate_agent(name, agent, &mut errors);
             if agent.is_object() {
                 let native = native_name(name, agent);
                 if valid_native_name(&native) {
@@ -240,12 +240,7 @@ fn validate_orchestration(value: &Value, errors: &mut Vec<String>) {
     }
 }
 
-fn validate_agent(
-    name: &str,
-    value: &Value,
-    agents: &Map<String, Value>,
-    errors: &mut Vec<String>,
-) {
+fn validate_agent(name: &str, value: &Value, errors: &mut Vec<String>) {
     if !is_name(Some(name)) {
         errors.push(format!("agent name '{name}' is not portable"));
     }
@@ -338,25 +333,20 @@ fn validate_agent(
         ));
     }
     if let Some(runtime) = agent.get("runtime") {
-        validate_runtime(name, runtime, agents, errors);
+        validate_runtime(name, runtime, errors);
     }
 }
 
-fn validate_runtime(
-    name: &str,
-    value: &Value,
-    agents: &Map<String, Value>,
-    errors: &mut Vec<String>,
-) {
+fn validate_runtime(name: &str, value: &Value, errors: &mut Vec<String>) {
     let Some(runtime) = value.as_object() else {
         errors.push(format!("agents.{name}.runtime must be an object"));
         return;
     };
     let fields = ["host", "model", "reasoningEffort", "fallback"];
     reject_unknown(runtime, &fields, &format!("agents.{name}.runtime"), errors);
-    for field in fields {
+    for field in BINDING_FIELDS {
         if runtime
-            .get(field)
+            .get(*field)
             .is_some_and(|value| value.as_str().map_or(true, |entry| entry.trim().is_empty()))
         {
             errors.push(format!(
@@ -364,14 +354,46 @@ fn validate_runtime(
             ));
         }
     }
-    // "none" declines fallback; any other value must name another configured
-    // agent, so an authorized substitution can never dangle.
-    if let Some(fallback) = runtime.get("fallback").and_then(Value::as_str) {
-        if fallback != "none" && !agents.contains_key(fallback) {
+    // A fallback is an alternate execution binding for this same agent: it can
+    // move where a role runs, never which contract it runs. Naming another
+    // agent is refused outright, so no configuration can substitute a second
+    // profile, purpose, or boundary for the one the plan selected.
+    match runtime.get("fallback") {
+        None => {}
+        Some(Value::String(declined)) if declined == "none" => {}
+        Some(Value::Object(binding)) => validate_fallback_binding(name, binding, errors),
+        Some(_) => errors.push(format!(
+            "agents.{name}.runtime.fallback must be \"none\" or an alternate runtime binding of host, model, and reasoningEffort"
+        )),
+    }
+}
+
+const BINDING_FIELDS: &[&str] = &["host", "model", "reasoningEffort"];
+
+fn validate_fallback_binding(name: &str, binding: &Map<String, Value>, errors: &mut Vec<String>) {
+    reject_unknown(
+        binding,
+        BINDING_FIELDS,
+        &format!("agents.{name}.runtime.fallback"),
+        errors,
+    );
+    for field in BINDING_FIELDS {
+        if binding
+            .get(*field)
+            .is_some_and(|value| value.as_str().map_or(true, |entry| entry.trim().is_empty()))
+        {
             errors.push(format!(
-                "agents.{name}.runtime.fallback must be \"none\" or the name of a configured agent"
+                "agents.{name}.runtime.fallback.{field} must be a non-empty string"
             ));
         }
+    }
+    if !BINDING_FIELDS
+        .iter()
+        .any(|field| binding.get(*field).and_then(Value::as_str).is_some())
+    {
+        errors.push(format!(
+            "agents.{name}.runtime.fallback must bind at least one of host, model, or reasoningEffort"
+        ));
     }
 }
 

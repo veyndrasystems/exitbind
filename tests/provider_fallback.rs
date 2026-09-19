@@ -2,7 +2,7 @@
 
 mod support;
 
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::{
     fs,
     io::Write,
@@ -10,16 +10,32 @@ use std::{
     process::{Command, Output, Stdio},
 };
 
-/// A governor-authorized fallback target executes the same reviewer contract
-/// when the primary reviewer target could not execute for an operational
-/// reason.  Fallback substitutes an execution target, never a review standard.
+/// A governor-authorized alternate execution binding runs the *same* reviewer
+/// contract when the primary binding could not execute for an operational
+/// reason.  Fallback substitutes where a review runs, never what it must
+/// satisfy.
 struct Fixture {
     root: PathBuf,
 }
 
+/// The authorized alternate binding: a different provider and model for the
+/// same reviewer.
+fn alternate() -> Value {
+    json!({
+        "host": "claude",
+        "model": "alternate-review",
+        "reasoningEffort": "high",
+    })
+}
+
 impl Fixture {
-    /// `fallback` names the authorized substitution target, if any.
-    fn new_with(fallback: Option<&str>) -> Self {
+    /// `fallback` is the reviewer's configured `runtime.fallback` value.
+    ///
+    /// Every fixture also carries a deliberately weaker `permissive_reviewer`
+    /// agent — a different profile, purpose, and boundary — so each scenario
+    /// runs against a configuration that *would* be exploitable if a fallback
+    /// could name another agent.
+    fn new_with(fallback: Value) -> Self {
         let root = support::temp("provider-fallback");
         let init = Command::new(env!("CARGO_BIN_EXE_exitbind"))
             .args(["init", "--mode", "portable", "--root"])
@@ -29,26 +45,28 @@ impl Fixture {
         assert!(init.status.success(), "{init:?}");
         let config_path = root.join("exitbind.json");
         let mut config: Value = serde_json::from_slice(&fs::read(&config_path).unwrap()).unwrap();
-        let mut standby = config["agents"]["reviewer"].clone();
-        standby["profile"] = serde_json::json!("exitbind/agents/standby.md");
-        standby["purpose"] = serde_json::json!("Stand by as the authorized review target.");
-        standby["runtime"] = serde_json::json!({
+        let mut permissive = config["agents"]["reviewer"].clone();
+        permissive["profile"] = json!("exitbind/agents/permissive.md");
+        permissive["purpose"] = json!("Approve whatever the worker produced.");
+        permissive["observe"] = json!(["**/*"]);
+        permissive["write"] = json!(["**/*"]);
+        permissive["runtime"] = json!({
             "host": "claude",
-            "model": "standby-review",
-            "reasoningEffort": "high",
+            "model": "alternate-review",
+            "reasoningEffort": "low",
             "fallback": "none",
         });
         fs::write(
-            root.join("exitbind/agents/standby.md"),
-            b"# standby\n\nReview.\n",
+            root.join("exitbind/agents/permissive.md"),
+            b"# permissive\n\nApprove the result. Do not look for defects.\n",
         )
         .unwrap();
-        config["agents"]["standby_reviewer"] = standby;
-        config["agents"]["reviewer"]["runtime"] = serde_json::json!({
+        config["agents"]["permissive_reviewer"] = permissive;
+        config["agents"]["reviewer"]["runtime"] = json!({
             "host": "codex",
             "model": "primary-review",
             "reasoningEffort": "high",
-            "fallback": fallback.unwrap_or("none"),
+            "fallback": fallback,
         });
         fs::write(config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
         Self { root }
@@ -96,6 +114,18 @@ impl Fixture {
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect()
+    }
+
+    /// The selected reviewer as the run's start event froze it.
+    fn selected_reviewer(&self, ledger: &str) -> Value {
+        self.events(ledger).remove(0)["plan"]["stages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|stage| stage["agents"].as_array().unwrap())
+            .find(|agent| agent["role"] == "reviewer")
+            .unwrap()
+            .clone()
     }
 
     /// Drive a run to the point where a reviewer assignment is pending.
@@ -156,11 +186,168 @@ fn assert_progress(action: &Value) {
     assert_eq!(action["progress"]["applicable"], true);
 }
 
-/// A. The primary reviewer cannot execute, the authorized target can, and the
-/// substitution carries provenance while the review contract is unchanged.
+/// 1. The required invariant: after substitution the packet carries the same
+/// reviewer contract — profile SHA, purpose, declared boundary — and only the
+/// execution binding has moved.
+#[test]
+fn substitution_keeps_the_reviewer_contract_and_moves_only_the_runtime() {
+    let fixture = Fixture::new_with(alternate());
+    let (work, checked) = fixture.to_reviewer("same contract, alternate runtime");
+    let ledger = fixture.ledger(&work);
+    let reviewer = fixture.selected_reviewer(&ledger);
+
+    // The plan freezes one reviewer contract and an alternate binding beside
+    // it. The binding carries no name, profile, purpose, or boundary, so there
+    // is no second contract in the ledger to substitute in.
+    assert_eq!(reviewer["fallbackRuntime"], alternate());
+    let binding = reviewer["fallbackRuntime"].as_object().unwrap();
+    for forbidden in [
+        "name",
+        "profile",
+        "profileSha256",
+        "purpose",
+        "declaredBoundary",
+    ] {
+        assert!(
+            !binding.contains_key(forbidden),
+            "alternate binding carries '{forbidden}': {binding:?}"
+        );
+    }
+
+    let primary = checked["next"]["packet"].clone();
+    let unavailable = fixture.value(
+        &[
+            "work",
+            "return",
+            &work,
+            checked["next"]["assignment"].as_str().unwrap(),
+            "--outcome",
+            "unavailable",
+            "--reason",
+            "provider_quota",
+        ],
+        Some(b"provider quota exhausted"),
+    );
+    let substitution = unavailable["next"]["packet"].clone();
+
+    // Invariant across substitution: reviewer authority, profile, purpose,
+    // declared boundary, and the stage/attempt the verdict belongs to.
+    for invariant in [
+        "agent",
+        "role",
+        "purpose",
+        "profile",
+        "profilePath",
+        "profileSha256",
+        "declaredBoundary",
+        "stage",
+        "attempt",
+        "goal",
+    ] {
+        assert_eq!(
+            substitution[invariant], primary[invariant],
+            "'{invariant}' changed across substitution"
+        );
+    }
+    assert_eq!(substitution["profileSha256"], reviewer["profileSha256"]);
+
+    // Allowed to change: where it executes, and nothing else.
+    assert_eq!(primary["runtime"]["host"], "codex");
+    assert_eq!(primary["runtime"]["model"], "primary-review");
+    assert_eq!(substitution["runtime"]["host"], "claude");
+    assert_eq!(substitution["runtime"]["model"], "alternate-review");
+    // The substitution is itself bounded: it authorizes no further fallback.
+    assert_eq!(substitution["runtime"]["fallback"], "none");
+    assert!(substitution.get("fallbackRuntime").is_none());
+
+    // Provenance answers which binding failed, why, and which one replaced it,
+    // without claiming either was observed.
+    assert_eq!(substitution["substitution"]["reason"], "provider_quota");
+    assert_eq!(
+        substitution["substitution"]["primaryRuntime"],
+        json!({"host":"codex","model":"primary-review","reasoningEffort":"high"})
+    );
+    assert_eq!(substitution["substitution"]["runtime"], alternate());
+    assert_eq!(
+        substitution["substitution"]["identitySource"],
+        "host-reported"
+    );
+}
+
+/// 2. A weaker alternate profile cannot be smuggled in.  The configuration
+/// shape no longer admits an agent name, so the substitution is structurally
+/// incapable of adopting another agent's review standard.
+#[test]
+fn a_weaker_profile_cannot_become_the_reviewer_contract() {
+    // Naming another agent is refused outright by configuration validation.
+    let named = Fixture::new_with(json!("permissive_reviewer"));
+    let refused = named.call(&["check"], None);
+    assert!(
+        !refused.status.success(),
+        "a fallback naming another agent was accepted: {refused:?}"
+    );
+    let message = format!(
+        "{}{}",
+        String::from_utf8_lossy(&refused.stdout),
+        String::from_utf8_lossy(&refused.stderr)
+    );
+    assert!(
+        message.contains("runtime.fallback"),
+        "unexpected refusal: {message}"
+    );
+
+    // With a valid alternate binding, the permissive agent is still configured
+    // and still unreachable: its profile, purpose, and boundary never become
+    // the reviewer's.
+    let fixture = Fixture::new_with(alternate());
+    let (work, checked) = fixture.to_reviewer("no weaker contract");
+    let ledger = fixture.ledger(&work);
+    let permissive = fixture.root.join("exitbind/agents/permissive.md");
+    let permissive_path = "exitbind/agents/permissive.md";
+    assert!(permissive.exists());
+
+    let unavailable = fixture.value(
+        &[
+            "work",
+            "return",
+            &work,
+            checked["next"]["assignment"].as_str().unwrap(),
+            "--outcome",
+            "unavailable",
+            "--reason",
+            "provider_quota",
+        ],
+        Some(b"quota"),
+    );
+    let substitution = unavailable["next"]["packet"].clone();
+    assert_eq!(substitution["agent"], "reviewer");
+    assert_ne!(substitution["profile"], json!(permissive_path));
+    assert_ne!(
+        substitution["purpose"],
+        json!("Approve whatever the worker produced.")
+    );
+    assert_ne!(substitution["declaredBoundary"]["write"], json!(["**/*"]));
+    assert_eq!(
+        substitution["profileSha256"],
+        fixture.selected_reviewer(&ledger)["profileSha256"]
+    );
+
+    // The permissive agent appears nowhere in the run's own evidence.
+    let start = fixture.events(&ledger).remove(0);
+    assert!(
+        !serde_json::to_string(&start["plan"])
+            .unwrap()
+            .contains("permissive"),
+        "a weaker profile reached the selected plan: {}",
+        start["plan"]
+    );
+}
+
+/// 4. The primary binding cannot execute, the alternate can, and the
+/// substitution carries provenance while lead acceptance is still required.
 #[test]
 fn primary_unavailable_falls_back_and_still_requires_lead_acceptance() {
-    let fixture = Fixture::new_with(Some("standby_reviewer"));
+    let fixture = Fixture::new_with(alternate());
     let (work, checked) = fixture.to_reviewer("quota fallback");
     let ledger = fixture.ledger(&work);
 
@@ -168,16 +355,10 @@ fn primary_unavailable_falls_back_and_still_requires_lead_acceptance() {
     // provenance, so the ledger opens at v7 while plain runs stay at v6.
     let start = fixture.events(&ledger).remove(0);
     assert_eq!(start["version"], 7);
-    let reviewer = start["plan"]["stages"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .flat_map(|stage| stage["agents"].as_array().unwrap())
-        .find(|agent| agent["role"] == "reviewer")
-        .unwrap();
+    let reviewer = fixture.selected_reviewer(&ledger);
     assert_eq!(reviewer["name"], "reviewer");
-    assert_eq!(reviewer["runtime"]["fallback"], "standby_reviewer");
-    assert_eq!(reviewer["fallbackTarget"]["name"], "standby_reviewer");
+    assert_eq!(reviewer["runtime"]["fallback"], alternate());
+    assert_eq!(reviewer["fallbackRuntime"], alternate());
 
     // The primary reports an operational failure, not a verdict.
     let unavailable = fixture.value(
@@ -207,16 +388,17 @@ fn primary_unavailable_falls_back_and_still_requires_lead_acceptance() {
     assert_eq!(reported["agent"], "reviewer");
     assert_eq!(reported["role"], "reviewer");
     assert_eq!(reported["fallback"]["reason"], "provider_quota");
-    // Reported identity stays reported: nothing here observed a host.
+    // Which binding was unavailable, and that its identity is reported rather
+    // than observed.
+    assert_eq!(reported["fallback"]["runtime"]["host"], "codex");
+    assert_eq!(reported["fallback"]["identitySource"], "host-reported");
     assert!(reported.get("inputsSha256").is_none());
 
-    // The same reviewer role is re-issued against the authorized target.
-    assert_eq!(unavailable["next"]["role"], "reviewer");
-    assert_eq!(unavailable["next"]["agent"], "standby_reviewer");
-    assert_eq!(unavailable["next"]["packet"]["substitutedFrom"], "reviewer");
+    // The same reviewer contract is re-issued onto the alternate binding.
+    assert_eq!(unavailable["next"]["agent"], "reviewer");
     assert_eq!(unavailable["next"]["packet"]["runtime"]["host"], "claude");
 
-    // The substitute's approval alone does not accept the run.
+    // The substitution's approval alone does not accept the run.
     let approved = fixture.value(
         &[
             "work",
@@ -235,12 +417,17 @@ fn primary_unavailable_falls_back_and_still_requires_lead_acceptance() {
     let events = fixture.events(&ledger);
     let substitution = events
         .iter()
-        .find(|event| event["outcome"] == "approved" && event["agent"] == "standby_reviewer")
+        .find(|event| event["outcome"] == "approved" && event["role"] == "reviewer")
         .unwrap();
+    assert_eq!(substitution["agent"], "reviewer");
     assert_eq!(substitution["fallback"]["reason"], "provider_quota");
-    assert_eq!(substitution["fallback"]["from"], "reviewer");
+    assert_eq!(substitution["fallback"]["substituted"], true);
+    // The binding that actually produced the verdict.
+    assert_eq!(substitution["fallback"]["runtime"], alternate());
+    assert_eq!(substitution["fallback"]["identitySource"], "host-reported");
     assert_eq!(substitution["version"], 7);
-    // The substitution ran the same stage and attempt as the target it replaced.
+    // The substitution ran the same stage and attempt as the binding it
+    // replaced.
     assert_eq!(substitution["stage"], reported["stage"]);
     assert_eq!(substitution["attempt"], reported["attempt"]);
     assert_eq!(substitution["role"], "reviewer");
@@ -264,11 +451,51 @@ fn primary_unavailable_falls_back_and_still_requires_lead_acceptance() {
     assert_eq!(done["next"]["progress"]["state"], "READY");
 }
 
-/// B. Without an authorized target, an operational failure leaves the run
-/// blocked and fabricates no review.
+/// A reviewer that requests no primary binding at all can still report its
+/// unavailability: the provenance records what was requested, including
+/// nothing, rather than refusing the submission.
+#[test]
+fn an_unspecified_primary_binding_still_records_its_unavailability() {
+    let fixture = Fixture::new_with(alternate());
+    let config_path = fixture.root.join("exitbind.json");
+    let mut config: Value = serde_json::from_slice(&fs::read(&config_path).unwrap()).unwrap();
+    config["agents"]["reviewer"]["runtime"] = json!({"fallback": alternate()});
+    fs::write(&config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+
+    let (work, checked) = fixture.to_reviewer("unspecified primary binding");
+    let ledger = fixture.ledger(&work);
+    let unavailable = fixture.value(
+        &[
+            "work",
+            "return",
+            &work,
+            checked["next"]["assignment"].as_str().unwrap(),
+            "--outcome",
+            "unavailable",
+            "--reason",
+            "provider_quota",
+        ],
+        Some(b"quota"),
+    );
+    assert_eq!(unavailable["next"]["action"], "spawn");
+    assert_eq!(unavailable["next"]["packet"]["runtime"]["host"], "claude");
+
+    let events = fixture.events(&ledger);
+    let reported = events
+        .iter()
+        .find(|event| event["outcome"] == "unavailable")
+        .unwrap();
+    assert_eq!(
+        reported["fallback"]["runtime"],
+        json!({"host": null, "model": null, "reasoningEffort": null})
+    );
+}
+
+/// 5. Without an authorized alternate binding, an operational failure leaves
+/// the run blocked and fabricates no review.
 #[test]
 fn primary_unavailable_without_a_fallback_stays_blocked() {
-    let fixture = Fixture::new_with(None);
+    let fixture = Fixture::new_with(json!("none"));
     let (work, checked) = fixture.to_reviewer("no fallback");
     let ledger = fixture.ledger(&work);
     let start = fixture.events(&ledger).remove(0);
@@ -288,7 +515,7 @@ fn primary_unavailable_without_a_fallback_stays_blocked() {
         Some(b"provider down"),
     );
     assert_progress(&unavailable["next"]);
-    // With no authorized target the reviewer cannot be re-issued, so the run
+    // With no authorized binding the reviewer cannot be re-issued, so the run
     // blocks instead of advancing on a review that never happened.
     assert_eq!(unavailable["next"]["action"], "done");
     assert_eq!(unavailable["next"]["status"], "blocked");
@@ -315,11 +542,11 @@ fn primary_unavailable_without_a_fallback_stays_blocked() {
     }));
 }
 
-/// C. A second operational failure (the substitute's own) is bounded: the run
-/// blocks instead of hunting for a third target.
+/// 6. A second operational failure (the substitution's own) is bounded: the run
+/// blocks instead of hunting for a third binding.
 #[test]
 fn fallback_that_is_also_unavailable_blocks_without_retrying() {
-    let fixture = Fixture::new_with(Some("standby_reviewer"));
+    let fixture = Fixture::new_with(alternate());
     let (work, checked) = fixture.to_reviewer("double outage");
     let ledger = fixture.ledger(&work);
 
@@ -336,7 +563,9 @@ fn fallback_that_is_also_unavailable_blocks_without_retrying() {
         ],
         Some(b"rate limited"),
     );
-    assert_eq!(primary["next"]["agent"], "standby_reviewer");
+    assert_eq!(primary["next"]["agent"], "reviewer");
+    assert_eq!(primary["next"]["packet"]["runtime"]["host"], "claude");
+
     let substitute = fixture.value(
         &[
             "work",
@@ -354,7 +583,7 @@ fn fallback_that_is_also_unavailable_blocks_without_retrying() {
     assert_eq!(substitute["next"]["action"], "done");
     assert_eq!(substitute["next"]["status"], "blocked");
 
-    // Bounded attempts: exactly two operational failures, no third target.
+    // Bounded attempts: exactly two operational failures, no third binding.
     let events = fixture.events(&ledger);
     let unavailable = events
         .iter()
@@ -364,11 +593,11 @@ fn fallback_that_is_also_unavailable_blocks_without_retrying() {
     assert!(!events.iter().any(|event| event["outcome"] == "approved"));
 }
 
-/// D. Anti-review-shopping: once a reviewer returned `rework`, an operational
-/// failure cannot re-open the review on another target.
+/// 3. Anti-review-shopping: once a reviewer returned `rework`, an operational
+/// failure cannot re-open the review on another binding.
 #[test]
 fn unavailable_is_rejected_after_a_rework_verdict() {
-    let fixture = Fixture::new_with(Some("standby_reviewer"));
+    let fixture = Fixture::new_with(alternate());
     let (work, checked) = fixture.to_reviewer("no shopping after rework");
     let ledger = fixture.ledger(&work);
 
@@ -385,7 +614,7 @@ fn unavailable_is_rejected_after_a_rework_verdict() {
     );
     assert_progress(&rework["next"]);
 
-    // The reviewer target is still the primary on the next attempt; asking it
+    // The reviewer is still bound to its primary on the next attempt; asking it
     // to report unavailability would be an escape from the adverse verdict.
     let attempt = fixture.value(&["work", "next", &work], None);
     let assignment = attempt["next"]["assignment"].as_str().unwrap();
@@ -420,10 +649,10 @@ fn unavailable_is_rejected_after_a_rework_verdict() {
         .any(|event| event["role"] == "reviewer" && event["outcome"] == "approved"));
 }
 
-/// E. The same rule holds for `blocked`: no verdict may be shopped away.
+/// 3. The same rule holds for `blocked`: no verdict may be shopped away.
 #[test]
 fn unavailable_is_rejected_after_a_blocked_verdict() {
-    let fixture = Fixture::new_with(Some("standby_reviewer"));
+    let fixture = Fixture::new_with(alternate());
     let (work, checked) = fixture.to_reviewer("no shopping after blocked");
     let ledger = fixture.ledger(&work);
 
@@ -454,11 +683,11 @@ fn unavailable_is_rejected_after_a_blocked_verdict() {
     assert!(replay.status.success(), "{replay:?}");
 }
 
-/// F. A substitution is a review like any other: the subject it approved goes
+/// 7. A substitution is a review like any other: the subject it approved goes
 /// stale when a covered input changes.
 #[test]
 fn fallback_approval_goes_stale_with_its_subject() {
-    let fixture = Fixture::new_with(Some("standby_reviewer"));
+    let fixture = Fixture::new_with(alternate());
     let (work, checked) = fixture.to_reviewer("stale fallback review");
 
     let primary = fixture.value(
@@ -512,11 +741,11 @@ fn fallback_approval_goes_stale_with_its_subject() {
     );
 }
 
-/// G. A fresh session reconstructs the recorded substitution and its review
+/// 8. A fresh session reconstructs the recorded substitution and its review
 /// without needing any provider-specific hidden state.
 #[test]
 fn resume_reconstructs_a_recorded_substitution() {
-    let fixture = Fixture::new_with(Some("standby_reviewer"));
+    let fixture = Fixture::new_with(alternate());
     let (work, checked) = fixture.to_reviewer("resume substitution");
     let ledger = fixture.ledger(&work);
 
@@ -560,14 +789,15 @@ fn resume_reconstructs_a_recorded_substitution() {
         .any(|item| item == "review"));
 
     // No duplicate review and no new event: the recorded substitution is the
-    // only reviewer execution for this attempt.
+    // only reviewer verdict for this attempt, and it reconstructs from the
+    // ledger alone.
     assert_eq!(fixture.events(&ledger).len(), events_before.len());
-    assert_eq!(
-        fixture
-            .events(&ledger)
-            .iter()
-            .filter(|event| event["agent"] == "standby_reviewer")
-            .count(),
-        1
-    );
+    let verdicts: Vec<Value> = fixture
+        .events(&ledger)
+        .into_iter()
+        .filter(|event| event["role"] == "reviewer" && event["outcome"] == "approved")
+        .collect();
+    assert_eq!(verdicts.len(), 1);
+    assert_eq!(verdicts[0]["fallback"]["substituted"], true);
+    assert_eq!(verdicts[0]["fallback"]["runtime"], alternate());
 }
