@@ -801,3 +801,59 @@ fn resume_reconstructs_a_recorded_substitution() {
     assert_eq!(verdicts[0]["fallback"]["substituted"], true);
     assert_eq!(verdicts[0]["fallback"]["runtime"], alternate());
 }
+
+/// 9. The human rendering is a separate surface from the machine packet, and it
+/// must not collapse a configured alternate binding into "none". A configured
+/// binding that rendered as "none" would read as "no fallback was authorized"
+/// when one in fact was.
+#[test]
+fn a_configured_alternate_binding_cannot_render_as_none() {
+    let fixture = Fixture::new_with(alternate());
+    let configured = fixture.call(&["brief", "reviewer", "--task", "render"], None);
+    assert!(configured.status.success(), "{configured:?}");
+    let configured = String::from_utf8_lossy(&configured.stdout).into_owned();
+    let configured_line = runtime_line(&configured);
+
+    assert!(
+        !configured_line.ends_with("fallback=none"),
+        "a configured alternate binding rendered as no fallback: {configured_line}"
+    );
+    for value in [
+        "codex",
+        "primary-review",
+        "claude",
+        "alternate-review",
+        "high",
+    ] {
+        assert!(
+            configured_line.contains(value),
+            "rendered binding omits '{value}': {configured_line}"
+        );
+    }
+    // Rendering names what is requested, never what ran: the same rendering
+    // path certifies nothing about observed execution.
+    assert!(
+        configured_line.contains("requested"),
+        "rendering does not mark itself as a request: {configured_line}"
+    );
+
+    // The declined literal is the only value that renders as no fallback.
+    let declined = Fixture::new_with(json!("none"));
+    let literal = declined.call(&["brief", "reviewer", "--task", "render"], None);
+    assert!(literal.status.success(), "{literal:?}");
+    let literal = String::from_utf8_lossy(&literal.stdout).into_owned();
+    assert!(
+        runtime_line(&literal).ends_with("fallback=none"),
+        "a declined fallback did not render as none: {}",
+        runtime_line(&literal)
+    );
+}
+
+/// The one rendered line that reports the requested runtime binding.
+fn runtime_line(rendered: &str) -> String {
+    rendered
+        .lines()
+        .find(|line| line.starts_with("Requested runtime: "))
+        .unwrap_or_else(|| panic!("no requested-runtime line in: {rendered}"))
+        .to_owned()
+}

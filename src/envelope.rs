@@ -149,7 +149,7 @@ pub fn render(envelope: &Value) -> String {
         optional(&runtime["host"]),
         optional(&runtime["model"]),
         optional(&runtime["reasoningEffort"]),
-        optional(&runtime["fallback"]),
+        &fallback(&runtime["fallback"]),
         list(boundary, "observe"),
         list(boundary, "write"),
         list(boundary, "commands"),
@@ -219,4 +219,27 @@ fn string(value: &Value) -> &str {
 
 fn optional(value: &Value) -> &str {
     value.as_str().unwrap_or("none")
+}
+
+/// An agent's configured fallback, described for a human reader.
+///
+/// `runtime.fallback` declines substitution as the literal `"none"` and
+/// otherwise carries an alternate execution binding. A reader must be able to
+/// tell "no substitution is authorized" from "this is where substitution would
+/// run", so only the declined literal renders as no fallback. The binding is
+/// named as a requested target; nothing here observes or selects a runtime.
+fn fallback(value: &Value) -> String {
+    let Value::Object(binding) = value else {
+        return optional(value).to_owned();
+    };
+    let field = |key: &str| match binding.get(key) {
+        Some(Value::String(value)) => value.clone(),
+        _ => "none".to_owned(),
+    };
+    format!(
+        "requested alternate runtime (host={}, model={}, reasoning effort={})",
+        field("host"),
+        field("model"),
+        field("reasoningEffort"),
+    )
 }
