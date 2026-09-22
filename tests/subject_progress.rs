@@ -1848,6 +1848,89 @@ fn validated_packet_reuses_unchanged_evidence_without_rerunning_checks() {
 }
 
 #[test]
+fn invalid_or_authority_conflicting_saved_packet_cannot_be_reused() {
+    let fixture = Fixture::new_single();
+    let begin = fixture.value(
+        &[
+            "work",
+            "begin",
+            "change",
+            "--goal",
+            "reject invalid saved packets",
+            "--check-command",
+            "true",
+        ],
+        None,
+    );
+    let work = begin["work"].as_str().unwrap().to_owned();
+    let ledger = fixture.ledger(&work);
+    let packet = fixture.counter("invalid-packet.json");
+    fs::write(&packet, b"not json\n").unwrap();
+    let before = fs::read(fixture.root.join(&ledger)).unwrap();
+    let invalid = fixture.call(
+        &[
+            "work",
+            "validate",
+            &work,
+            "--packet",
+            packet.to_str().unwrap(),
+        ],
+        None,
+    );
+    assert!(invalid.status.success(), "{invalid:?}");
+    let invalid: Value = serde_json::from_slice(&invalid.stdout).unwrap();
+    assert_eq!(invalid["result"], "cannot_establish_applicability");
+    assert_eq!(invalid["reason"], "packet_not_an_object");
+    assert_eq!(invalid["reuse"], serde_json::json!([]));
+    assert_eq!(fs::read(fixture.root.join(&ledger)).unwrap(), before);
+
+    let current = fixture.value(&["work", "next", &work], None)["residual"].clone();
+    let mut conflicting = current;
+    conflicting["basis"] = serde_json::json!({"sha256": "f".repeat(64)});
+    fs::write(&packet, serde_json::to_vec(&conflicting).unwrap()).unwrap();
+    let verdict = fixture.value(
+        &[
+            "work",
+            "validate",
+            &work,
+            "--packet",
+            packet.to_str().unwrap(),
+        ],
+        None,
+    );
+    assert_eq!(verdict["result"], "refresh_required");
+    assert_eq!(verdict["reason"], "claims_disagree_with_state");
+    assert_eq!(verdict["reuse"], serde_json::json!([]));
+    assert_eq!(fs::read(fixture.root.join(&ledger)).unwrap(), before);
+
+    let current = fixture.value(&["work", "next", &work], None)["residual"].clone();
+    let mut conflicting_policy = current;
+    conflicting_policy["reviewPolicy"] = serde_json::json!({
+        "version": 1,
+        "decision": "required",
+        "source": "forged",
+        "reason": "conflicting policy",
+        "previousSha256": null,
+        "sha256": "f".repeat(64)
+    });
+    fs::write(&packet, serde_json::to_vec(&conflicting_policy).unwrap()).unwrap();
+    let verdict = fixture.value(
+        &[
+            "work",
+            "validate",
+            &work,
+            "--packet",
+            packet.to_str().unwrap(),
+        ],
+        None,
+    );
+    assert_eq!(verdict["result"], "refresh_required");
+    assert_eq!(verdict["reason"], "claims_disagree_with_state");
+    assert_eq!(verdict["reuse"], serde_json::json!([]));
+    assert_eq!(fs::read(fixture.root.join(&ledger)).unwrap(), before);
+}
+
+#[test]
 fn source_or_checker_edit_without_new_submission_invalidates_reuse_and_acceptance() {
     for edited in ["src/config.txt", "checks/preserve.sh"] {
         let fixture = Fixture::new_single();

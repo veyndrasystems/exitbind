@@ -1938,6 +1938,49 @@ fn lead_permit_is_refused_without_a_ledger_mutation() {
 }
 
 #[test]
+fn stale_assignment_and_unknown_outcome_refuse_before_artifact_or_ledger_mutation() {
+    let fixture = Fixture::new();
+    let started = fixture.json(&[
+        "work",
+        "begin",
+        "change",
+        "--goal",
+        "reject invalid worker returns",
+        "--check-command",
+        "true",
+    ]);
+    let work = started["work"].as_str().unwrap().to_owned();
+    let scoped = fixture.return_body(
+        &work,
+        started["next"]["assignment"].as_str().unwrap(),
+        "scoped",
+        b"scope\n",
+    );
+    assert!(scoped.status.success(), "{scoped:?}");
+    let assignment = fixture.json(&["work", "next", &work])["next"]["assignment"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let mut stale = assignment.clone();
+    stale.push('x');
+    let ledger = fixture.root.join(format!(
+        ".exitbind/runs/work-{}.jsonl",
+        work.strip_prefix("smw_").unwrap()
+    ));
+    let before = fs::read(&ledger).unwrap();
+    let artifacts = fixture.artifact_snapshot();
+    let refused = fixture.return_body(&work, &stale, "completed", b"must not persist\n");
+    assert!(!refused.status.success(), "stale assignment was accepted");
+    assert_eq!(fs::read(&ledger).unwrap(), before);
+    assert_eq!(fixture.artifact_snapshot(), artifacts);
+
+    let refused = fixture.return_body(&work, &assignment, "unknown", b"must not persist\n");
+    assert!(!refused.status.success(), "unknown outcome was accepted");
+    assert_eq!(fs::read(&ledger).unwrap(), before);
+    assert_eq!(fixture.artifact_snapshot(), artifacts);
+}
+
+#[test]
 fn conservative_completion_refuses_before_artifact_or_append() {
     let fixture = Fixture::new();
     let started = fixture.json(&[

@@ -354,7 +354,8 @@ pub(crate) fn return_result(
     std::io::stdin()
         .read_to_end(&mut bytes)
         .map_err(|error| format!("work result could not be read: {error}"))?;
-    let _submitted = run::submit_for_assignment(
+    let created_artifact = std::cell::RefCell::new(None);
+    let submitted = run::submit_for_assignment(
         loaded,
         &ledger,
         assignment,
@@ -362,8 +363,27 @@ pub(crate) fn return_result(
         outcome,
         reason,
         disposition,
-        || write_artifact(loaded, work, assignment, &bytes),
-    )?;
+        || {
+            let path = write_artifact(loaded, work, assignment, &bytes)?;
+            *created_artifact.borrow_mut() = Some(path.clone());
+            Ok(path)
+        },
+        |events, source| preflight_submission(loaded, work, events, source),
+    );
+    let _submitted = match submitted {
+        Ok(value) => value,
+        Err(submission_error) => {
+            if let Some(path) = created_artifact.into_inner() {
+                let artifact = loaded.state_root.join(&path);
+                if let Err(cleanup_error) = remove_created_artifact(&artifact) {
+                    return Err(format!(
+                        "{submission_error}; artifact cleanup failed at {path}: {cleanup_error}"
+                    ));
+                }
+            }
+            return Err(submission_error);
+        }
+    };
     // The decision that reaches a terminal state is exactly where its display
     // belongs: returning it here means the caller copies the product's own
     // wording instead of assembling a sentence from status and progress.
@@ -371,11 +391,56 @@ pub(crate) fn return_result(
     Ok(json!({"work": work, "next": next, "presentation": presentation}))
 }
 
+fn remove_created_artifact(path: &Path) -> std::io::Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+#[cfg(test)]
+mod artifact_cleanup_tests {
+    use super::remove_created_artifact;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn path(label: &str) -> std::path::PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("exitbind-{label}-{}-{nonce}", std::process::id()))
+    }
+
+    #[test]
+    fn created_artifact_cleanup_removes_the_file() {
+        let file = path("cleanup-file");
+        fs::write(&file, b"artifact").unwrap();
+        remove_created_artifact(&file).unwrap();
+        assert!(!file.exists());
+    }
+
+    #[test]
+    fn cleanup_failure_remains_visible_to_the_caller() {
+        let directory = path("cleanup-directory");
+        fs::create_dir(&directory).unwrap();
+        let error = remove_created_artifact(&directory).unwrap_err();
+        assert_ne!(error.kind(), std::io::ErrorKind::NotFound);
+        assert!(directory.is_dir());
+        fs::remove_dir(&directory).unwrap();
+    }
+}
+
 /// Decide whether a previously issued residual packet still applies to the
 /// current ledger and tested inputs. Never executes anything from the packet.
 pub(crate) fn validate(loaded: &Loaded, work: &str, packet_path: &str) -> Result<Value, String> {
     let ledger = resolve(loaded, work)?;
-    let packet = crate::work::packet::read_bounded(packet_path)?;
+    let packet = match crate::work::packet::read_bounded(packet_path) {
+        Ok(packet) => packet,
+        Err(error) if error == "packet is not valid JSON" => Value::Null,
+        Err(error) => return Err(error),
+    };
     let snapshot = run::RunSnapshot::capture(loaded, &ledger)?;
     let next = next_from(loaded, work, &snapshot)?;
     crate::work::packet::validate(work, &snapshot, &next, &packet)
@@ -759,23 +824,55 @@ fn next_and_residual(
     resumed: bool,
 ) -> Result<(Value, Value, Value), String> {
     let snapshot = run::RunSnapshot::capture(loaded, ledger)?;
-    let next = next_from(loaded, work, &snapshot)?;
-    let residual = crate::work::packet::project(work, &snapshot, &next)?;
+    next_and_residual_from_snapshot(loaded, work, &snapshot, resumed, true)
+}
+
+fn preflight_submission(
+    loaded: &Loaded,
+    work: &str,
+    events: &[Value],
+    source: &str,
+) -> Result<(), String> {
+    let snapshot = run::RunSnapshot::from_events(loaded, events, source)?;
+    let _ = next_and_residual_from_snapshot(loaded, work, &snapshot, false, false)?;
+    Ok(())
+}
+
+fn next_and_residual_from_snapshot(
+    loaded: &Loaded,
+    work: &str,
+    snapshot: &run::RunSnapshot,
+    resumed: bool,
+    remember_presentation: bool,
+) -> Result<(Value, Value, Value), String> {
+    let next = next_from(loaded, work, snapshot)?;
+    let residual = crate::work::packet::project(work, snapshot, &next)?;
     let mut next = next;
     next["resolvedActor"] = residual["humanHelp"]["nextAction"]["actor"].clone();
     // The fingerprint is computed only when a terminal acceptance has to be
     // compared with the tree; a running run already carries its own.
-    let facts = crate::work::packet::facts(&snapshot, &next, || {
+    let facts = crate::work::packet::facts(snapshot, &next, || {
         crate::run::inputs::fingerprint(loaded).ok()
     })?;
-    let presentation = crate::presentation_events::project(
-        &loaded.state_root,
-        work,
-        &residual,
-        &next["progress"],
-        &facts,
-        resumed,
-    );
+    let presentation = if remember_presentation {
+        crate::presentation_events::project(
+            &loaded.state_root,
+            work,
+            &residual,
+            &next["progress"],
+            &facts,
+            resumed,
+        )
+    } else {
+        crate::presentation_events::project_without_memory(
+            &loaded.state_root,
+            work,
+            &residual,
+            &next["progress"],
+            &facts,
+            resumed,
+        )
+    };
     Ok((next, residual, presentation))
 }
 

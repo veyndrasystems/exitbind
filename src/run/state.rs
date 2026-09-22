@@ -1051,9 +1051,63 @@ fn apply_event(state: &mut Value, event: &Value) -> Result<(), String> {
     }
 }
 
-fn apply_govern(state: &mut Value, _event: &Value) -> Result<(), String> {
+fn apply_govern(state: &mut Value, event: &Value) -> Result<(), String> {
     if state["status"] != "running" {
         return Err("governor action requires a running run".into());
+    }
+    if event["governorEvent"]["action"] == "replan" {
+        // v0.22/v0.24-rc.2 ledgers did not persist the assignment packet
+        // binding and may transition identity in their markerless re-plan.
+        // Preserve those append-only histories; current run markers take the
+        // strict path below.
+        if state["governor"]["defaults"]["replanBinding"] != "assignment_packet_v1" {
+            return Ok(());
+        }
+        if event["governorEvent"]["identityTransition"].is_null()
+            && state["governor"]["defaults"]["replanBinding"] == "assignment_packet_v1"
+            && (event["subjectSha256"] != state["subject"]["sha256"]
+                || event["attempt"] != state["attempt"])
+        {
+            return Err("legacy re-plan cannot change identity under the current binding".into());
+        }
+        if state["governor"]["defaults"]["replanBinding"] == "assignment_packet_v1"
+            && event["governorEvent"]["identityTransition"] != "carried_mutation_v1"
+        {
+            return Err("current re-plan is missing its identity transition binding".into());
+        }
+        let prior_input = state["events"].as_array().and_then(|events| {
+            let current = events
+                .iter()
+                .position(|candidate| candidate["eventSha256"] == event["eventSha256"])?;
+            events[..current]
+                .iter()
+                .rev()
+                .find_map(|candidate| candidate["inputsSha256"].as_str())
+        });
+        let assignment = crate::run::assignment::pending(state)
+            .into_iter()
+            .find(|item| item["agent"] == event["agent"])
+            .ok_or("re-plan actor is not currently assigned")?;
+        if assignment["role"] != "worker"
+            || event["role"] != "worker"
+            || assignment["stage"] != event["stage"]
+            || assignment["attempt"] != event["attempt"]
+            || assignment["role"] != event["role"]
+            || event["subjectSha256"] != state["subject"]["sha256"]
+            || state["inputsSha256"]
+                .as_str()
+                .or(prior_input)
+                .is_some_and(|expected| event["inputsSha256"] != expected)
+        {
+            return Err("re-plan is not bound to the current worker assignment".into());
+        }
+        if let Some(packet_sha256) = event["governorEvent"]["assignmentPacketSha256"].as_str() {
+            if packet_sha256 != crate::evidence::hash::value(&assignment) {
+                return Err("re-plan assignment packet is stale or mismatched".into());
+            }
+        } else if state["governor"]["defaults"]["replanBinding"] == "assignment_packet_v1" {
+            return Err("carried re-plan is missing its assignment packet binding".into());
+        }
     }
     Ok(())
 }
@@ -1210,6 +1264,7 @@ fn apply_disposition(state: &mut Value, event: &Value, _assignment: &Value) -> R
     });
     if let Some(inputs) = event.get("inputsSha256") {
         submission["inputsSha256"] = inputs.clone();
+        state["inputsSha256"] = inputs.clone();
     }
     for field in ["basisSha256", "reviewDecisionSha256"] {
         if let Some(value) = event.get(field) {
@@ -1340,6 +1395,7 @@ fn apply_submission(state: &mut Value, event: &Value) -> Result<(), String> {
     let mut submission = json!({"stage":event["stage"],"attempt":event["attempt"],"agent":event["agent"],"role":event["role"],"outcome":event["outcome"],"artifact":event["artifact"],"eventSha256":event["eventSha256"]});
     if let Some(inputs) = event.get("inputsSha256") {
         submission["inputsSha256"] = inputs.clone();
+        state["inputsSha256"] = inputs.clone();
     }
     for field in ["basisSha256", "reviewDecisionSha256"] {
         if let Some(value) = event.get(field) {
@@ -1640,6 +1696,7 @@ fn reject_unknown(
                 "subjectSha256",
                 "inputsSha256",
                 "assignmentSha256",
+                "assignmentPacketSha256",
                 "operation",
                 "requestId",
                 "requestDigest",
@@ -2002,7 +2059,7 @@ fn timestamp_ms(value: Option<&str>) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_unavailable, subject_for_submission};
+    use super::{apply_govern, apply_unavailable, subject_for_submission};
     use serde_json::json;
 
     const SHA: &str = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
@@ -2024,6 +2081,68 @@ mod tests {
             ]},
             "submissions": []
         })
+    }
+
+    fn strict_replan_fixture() -> (serde_json::Value, serde_json::Value) {
+        let state = json!({
+            "status": "running",
+            "currentStage": 1,
+            "attempt": 1,
+            "runId": "run",
+            "subject": {"sha256": SHA},
+            "inputsSha256": SHA,
+            "events": [],
+            "plan": {"version":1,"maxParallel":1,"stages":[
+                {"stage":1,"agents":[{"role":"worker","name":"worker","displayName":"worker","nativeTaskName":"worker","purpose":"test","profile":"worker.md","profileSha256":SHA,"runtime":{"host":null,"model":null,"reasoningEffort":null},"declaredBoundary":{}}]}
+            ]},
+            "submissions": [],
+            "governor": {"defaults": {"replanBinding":"assignment_packet_v1"}}
+        });
+        let assignment = crate::run::assignment::pending(&state)
+            .into_iter()
+            .next()
+            .unwrap();
+        let event = json!({
+            "action":"govern", "governorEvent": {
+                "action":"replan", "identityTransition":"carried_mutation_v1",
+                "assignmentPacketSha256": crate::evidence::hash::value(&assignment)
+            },
+            "agent":"worker", "role":"worker", "stage":1, "attempt":1,
+            "subjectSha256":SHA, "inputsSha256":SHA, "eventSha256":"event"
+        });
+        (state, event)
+    }
+
+    #[test]
+    fn strict_replan_rejects_forged_input_packet_and_actor_bindings() {
+        for label in ["input", "packet", "actor", "markers"] {
+            let (mut state, mut event) = strict_replan_fixture();
+            match label {
+                "input" => event["inputsSha256"] = json!("0".repeat(64)),
+                "packet" => {
+                    event["governorEvent"]["assignmentPacketSha256"] = json!("0".repeat(64))
+                }
+                "actor" => {
+                    event["agent"] = json!("reviewer");
+                    event["role"] = json!("reviewer");
+                }
+                "markers" => {
+                    event["governorEvent"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("identityTransition");
+                    event["governorEvent"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("assignmentPacketSha256");
+                }
+                _ => unreachable!(),
+            }
+            assert!(
+                apply_govern(&mut state, &event).is_err(),
+                "{label} bypassed"
+            );
+        }
     }
 
     fn unavailable(agent: &str) -> serde_json::Value {

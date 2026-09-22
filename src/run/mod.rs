@@ -198,6 +198,7 @@ pub fn start_with_policy(
                 "noInformationLimit": crate::context::NO_INFORMATION_LIMIT,
                 "postReplanLimit": crate::context::POST_REPLAN_LIMIT,
                 "grantProtocol": crate::context::GRANT_PROTOCOL_VERSION,
+                "replanBinding": "assignment_packet_v1",
             });
         }
         let event = run_state::make_event(value);
@@ -362,6 +363,7 @@ pub fn submit(
             root: artifact_root,
             artifact: || Ok(artifact),
         },
+        |_, _| Ok(()),
     )
 }
 
@@ -449,7 +451,7 @@ impl AssignmentIdentity {
 /// Submit a work result after revalidating the façade's exact assignment
 /// under the ledger lock.  The artifact is produced only after that check.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn submit_for_assignment<F>(
+pub(crate) fn submit_for_assignment<F, P>(
     loaded: &Loaded,
     ledger: &str,
     assignment_handle: &str,
@@ -458,9 +460,11 @@ pub(crate) fn submit_for_assignment<F>(
     reason: Option<&str>,
     disposition: Option<&str>,
     artifact: F,
+    preflight: P,
 ) -> Result<Value, String>
 where
     F: FnOnce() -> Result<String, String>,
+    P: FnOnce(&[Value], &str) -> Result<(), String>,
 {
     let path = ledger_path(&loaded.state_root, ledger, false)?;
     let targets = [path.path.as_path(), path.lock.as_path()];
@@ -480,6 +484,7 @@ where
             root: Some("state"),
             artifact,
         },
+        preflight,
     )
 }
 
@@ -756,6 +761,8 @@ pub(crate) fn replan_for_assignment(
             previous_governor.as_ref(),
             json!({
                 "action": "replan",
+                "identityTransition": "carried_mutation_v1",
+                "assignmentPacketSha256": crate::evidence::hash::value(&assignment),
                 "runId": state["runId"],
                 "subjectSha256": state["subject"]["sha256"],
                 "attempt": state["attempt"],
@@ -1140,7 +1147,7 @@ fn matching_mutation_grants(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn submit_locked<F>(
+fn submit_locked<F, P>(
     loaded: &Loaded,
     path: &run_ledger::LedgerPath,
     agent: &str,
@@ -1150,9 +1157,11 @@ fn submit_locked<F>(
     assignment_sha256: Option<&str>,
     disposition: Option<&str>,
     subject: SubmitSubject<'_, F>,
+    preflight: P,
 ) -> Result<Value, String>
 where
     F: FnOnce() -> Result<String, String>,
+    P: FnOnce(&[Value], &str) -> Result<(), String>,
 {
     let SubmitSubject { root, artifact } = subject;
     let artifact_root = root;
@@ -1373,6 +1382,9 @@ where
         let mut all = events;
         all.push(event.clone());
         let next_state = run_state::reduce(&all)?;
+        let line = serde_json::to_string(&event).map_err(|error| error.to_string())?;
+        let projected_source = format!("{source}{line}\n");
+        preflight(&all, &projected_source)?;
         append(path, &event, false, &source)?;
         Ok(json!({
             "valid": true,
@@ -2862,7 +2874,18 @@ pub(crate) struct RunSnapshot {
 impl RunSnapshot {
     pub(crate) fn capture(loaded: &Loaded, ledger: &str) -> Result<Self, String> {
         let (_, events, source) = load(loaded, ledger)?;
-        let (state, inputs) = reduce_with_inputs(loaded, &events)?;
+        Self::from_events(loaded, &events, &source)
+    }
+
+    pub(crate) fn from_events(
+        loaded: &Loaded,
+        events: &[Value],
+        source: &str,
+    ) -> Result<Self, String> {
+        if events.is_empty() {
+            return Err("run ledger has no events".into());
+        }
+        let (state, inputs) = reduce_with_inputs(loaded, events)?;
         predecessor(loaded, &events[0])?;
         let drift = assert_no_drift(loaded, &state);
         let artifact_current = if drift.is_ok() {
@@ -2871,7 +2894,7 @@ impl RunSnapshot {
             Ok(false)
         };
         Ok(Self {
-            events,
+            events: events.to_vec(),
             state,
             inputs,
             ledger_sha256: hash::bytes(source.as_bytes()),
