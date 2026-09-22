@@ -177,11 +177,18 @@ fn assert_opaque_envelope(value: &Value) {
                     "ledgerPath",
                     "profilePath",
                     "artifactPathHint",
+                    "sourcePath",
                 ] {
                     assert!(
                         !object.contains_key(key),
                         "opaque envelope leaked {key}: {value}"
                     );
+                }
+                if object.get("exact") == Some(&serde_json::json!(true)) {
+                    assert!(matches!(
+                        object.get("kind").and_then(Value::as_str),
+                        Some("ledger_history" | "ledger_event" | "check_log")
+                    ));
                 }
                 object.values().for_each(visit);
             }
@@ -278,6 +285,7 @@ fn work_discovery_diagnostics_are_table_driven_and_fail_closed() {
         "drift",
         "artifact_drift",
         "memory_drift",
+        "profile_drift",
         "ambiguity",
         "corruption",
         "explicit",
@@ -454,6 +462,39 @@ fn work_discovery_diagnostics_are_table_driven_and_fail_closed() {
                 let value: Value = serde_json::from_slice(&output.stdout).unwrap();
                 assert_eq!(value["reason"]["code"], "memory_drift");
                 assert_eq!(value["effect"], "no-change");
+                assert_eq!(value["nextAction"]["type"], "supersede");
+                assert_eq!(value["nextAction"]["safe"], true);
+                assert_eq!(fs::read(fixture.root.join(&ledger)).unwrap(), before);
+                assert_opaque_envelope(&value);
+            }
+            "profile_drift" => {
+                let fixture = Fixture::new_single();
+                let begin = fixture.value(
+                    &[
+                        "work",
+                        "begin",
+                        "change",
+                        "--goal",
+                        "diagnostic profile drift",
+                        "--check-command",
+                        "true",
+                    ],
+                    None,
+                );
+                let work = begin["work"].as_str().unwrap();
+                let config: Value =
+                    serde_json::from_slice(&fs::read(fixture.root.join("exitbind.json")).unwrap())
+                        .unwrap();
+                let profile = config["agents"]["lead"]["profile"].as_str().unwrap();
+                fs::remove_file(fixture.root.join(profile)).unwrap();
+                let ledger = fixture.ledger(work);
+                let before = fs::read(fixture.root.join(&ledger)).unwrap();
+                let output = fixture.call(&["work", "resume", "--json"], None);
+                assert_eq!(output.status.code(), Some(1));
+                let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+                assert_eq!(value["reason"]["code"], "profile_drift");
+                assert_eq!(value["effect"], "no-change");
+                assert_opaque_reference(&value["reference"], serde_json::json!({"work": work}));
                 assert_eq!(value["nextAction"]["type"], "supersede");
                 assert_eq!(value["nextAction"]["safe"], true);
                 assert_eq!(fs::read(fixture.root.join(&ledger)).unwrap(), before);

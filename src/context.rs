@@ -14,6 +14,7 @@ use serde_json::{json, Map, Value};
 use std::fs;
 
 pub(crate) const CONTEXT_VERSION: u64 = 2;
+pub(crate) const OPAQUE_CONTEXT_VERSION: u64 = 3;
 pub(crate) const GOVERNOR_VERSION: u64 = crate::kernel::governor::VERSION;
 pub(crate) const SENSOR_VERSION: u64 = 1;
 pub(crate) const GRANT_PROTOCOL_VERSION: u64 = 1;
@@ -97,7 +98,7 @@ pub(crate) fn project(
     });
     let expansions = expansions(view, status, work);
     let mut value = json!({
-        "version": CONTEXT_VERSION,
+        "version": OPAQUE_CONTEXT_VERSION,
         "role": role,
         "run": {"id": run_id, "workflow": workflow},
         "subject": subject,
@@ -110,6 +111,7 @@ pub(crate) fn project(
         "expansions": expansions,
         "recovery": recovery,
     });
+    crate::work::packet::sanitize_assignment(&mut value);
     value["digest"] = json!(hash::value(&value));
     Ok(value)
 }
@@ -440,14 +442,11 @@ fn check_log_ref(work: &str, view: &Value, check_sha: &str) -> Option<Value> {
 /// Public evidence references identify canonical bytes without carrying the
 /// state-root transport needed to resolve them.
 pub(crate) fn artifact_reference(artifact: &Value, kind: &str) -> Value {
-    let mut reference = json!({
+    json!({
         "kind": kind,
         "sha256": artifact["sha256"],
         "bytes": artifact["bytes"],
-        "exact": true,
-    });
-    reference["id"] = json!(format!("ref:{}", hash::value(artifact)));
-    reference
+    })
 }
 
 fn set_opaque_id(reference: &mut Value) {
@@ -516,7 +515,10 @@ fn valid_projection(value: &Value) -> bool {
     PROJECTION_FIELDS
         .iter()
         .all(|field| object.contains_key(*field))
-        && value["version"].as_u64() == Some(CONTEXT_VERSION)
+        && matches!(
+            value["version"].as_u64(),
+            Some(OPAQUE_CONTEXT_VERSION | CONTEXT_VERSION)
+        )
         && value["digest"].as_str().is_some_and(|digest| {
             let mut copy = value.clone();
             copy.as_object_mut().unwrap().remove("digest");

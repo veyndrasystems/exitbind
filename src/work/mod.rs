@@ -174,13 +174,13 @@ pub(crate) fn permit(
     let expected = run::AssignmentIdentity::from_action(&action)?;
     let permission =
         run::permit_for_assignment(loaded, &ledger, work, assignment, expected, operation)?;
-    Ok(json!({
+    Ok(agent_response(json!({
         "work": work,
         "allowed": permission["allowed"],
         "event": permission["event"],
         "governor": permission["governor"],
         "next": next_for(loaded, work, &ledger)?,
-    }))
+    })))
 }
 
 pub(crate) fn replan(
@@ -211,12 +211,12 @@ pub(crate) fn replan(
         scope_decision,
         blocker,
     )?;
-    Ok(json!({
+    Ok(agent_response(json!({
         "work": work,
         "event": result["event"],
         "governor": result["governor"],
         "next": next_for(loaded, work, &ledger)?,
-    }))
+    })))
 }
 
 pub(crate) fn evidence(
@@ -243,12 +243,12 @@ pub(crate) fn evidence(
         artifact_root,
         artifact_path,
     )?;
-    Ok(json!({
+    Ok(agent_response(json!({
         "work": work,
         "event": result["event"],
         "governor": result["governor"],
         "next": next_for(loaded, work, &ledger)?,
-    }))
+    })))
 }
 
 pub(crate) fn sensor_request(
@@ -270,9 +270,9 @@ pub(crate) fn sensor_request(
         assignment,
         run::AssignmentIdentity::from_action(&action)?,
     )?;
-    Ok(
+    Ok(agent_response(
         json!({"work": work, "event": result["event"], "governor": result["governor"], "next": next_for(loaded, work, &ledger)?}),
-    )
+    ))
 }
 
 pub(crate) fn sensor_result(
@@ -302,9 +302,9 @@ pub(crate) fn sensor_result(
         input_digest,
         identity_source,
     )?;
-    Ok(
+    Ok(agent_response(
         json!({"work": work, "event": result["event"], "governor": result["governor"], "next": next_for(loaded, work, &ledger)?}),
-    )
+    ))
 }
 
 pub(crate) fn return_result(
@@ -440,7 +440,15 @@ pub(crate) fn expand(loaded: &Loaded, work: &str, reference: &str) -> Result<Val
 fn find_reference(value: &Value, requested: &str) -> Option<Value> {
     if let Some(object) = value.as_object() {
         let matches = object.get("id").and_then(Value::as_str) == Some(requested);
-        if matches && object.contains_key("kind") && object.contains_key("exact") {
+        let expandable = matches
+            && object.get("exact") == Some(&Value::Bool(true))
+            && object
+                .get("kind")
+                .and_then(Value::as_str)
+                .is_some_and(|kind| {
+                    matches!(kind, "ledger_history" | "ledger_event" | "check_log")
+                });
+        if expandable {
             return Some(value.clone());
         }
         for child in object.values() {
@@ -638,6 +646,11 @@ fn reference(work: &str) -> Value {
     json!({"work": work})
 }
 
+fn agent_response(mut value: Value) -> Value {
+    crate::work::packet::sanitize_assignment(&mut value);
+    value
+}
+
 fn safe_action(kind: &str) -> Value {
     json!({"type": kind, "safe": true})
 }
@@ -782,7 +795,7 @@ fn next_from(loaded: &Loaded, work: &str, snapshot: &run::RunSnapshot) -> Result
         if let Ok(context) = crate::context::project(work, &view, &status, &result) {
             result["packet"] = json!({"context": context});
         }
-        return Ok(result);
+        return Ok(agent_response(result));
     }
     let assignment = value["assignments"]
         .as_array()
@@ -836,7 +849,7 @@ fn next_from(loaded: &Loaded, work: &str, snapshot: &run::RunSnapshot) -> Result
             json!(["accepted", "rework", "blocked", "disposition"])
         };
     }
-    Ok(result)
+    Ok(agent_response(result))
 }
 
 #[derive(Clone, Debug)]

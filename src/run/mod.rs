@@ -3042,15 +3042,18 @@ fn assert_no_drift(loaded: &Loaded, state: &Value) -> Result<(), String> {
 /// part of that runtime, so it drifts with the contract it belongs to.
 fn assert_selected_agent(loaded: &Loaded, selected: &Value) -> Result<(), String> {
     let name = selected["name"].as_str().unwrap_or("");
-    let configured = loaded
-        .agent(name)
-        .ok_or_else(|| format!("profile selection changed: agent '{name}' is missing"))?;
-    let path = config::file(&loaded.control_root, &configured.profile)
-        .map_err(|error| format!("profile cannot be read for '{name}': {error}"))?;
-    let profile_sha = hash::text(
-        &fs::read_to_string(&path)
-            .map_err(|error| format!("profile cannot be read for '{name}': {error}"))?,
-    );
+    let expected_profile = selected["profileSha256"].as_str().unwrap_or("").to_owned();
+    let unavailable = || {
+        run_error::machine_drift(DriftError::profile(
+            name.to_owned(),
+            expected_profile.clone(),
+            String::new(),
+        ))
+    };
+    let configured = loaded.agent(name).ok_or_else(unavailable)?;
+    let path =
+        config::file(&loaded.control_root, &configured.profile).map_err(|_| unavailable())?;
+    let profile_sha = hash::text(&fs::read_to_string(&path).map_err(|_| unavailable())?);
     if config::rel(&loaded.control_root, &path)? != selected["profile"]
         || profile_sha != selected["profileSha256"]
     {

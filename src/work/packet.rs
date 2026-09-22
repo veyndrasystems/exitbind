@@ -188,15 +188,25 @@ fn sanitize_path_fields(value: &mut Value) {
                 "artifactPathHint",
                 "profilePath",
                 "ledgerPath",
+                "sourcePath",
             ] {
                 object.remove(key);
             }
             if object.remove("path").is_some() {
                 object.remove("root");
-                object.insert(
-                    "id".into(),
-                    json!(format!("ref:{}", hash::value(&original))),
-                );
+                if object.get("exact") == Some(&Value::Bool(true))
+                    && object
+                        .get("kind")
+                        .and_then(Value::as_str)
+                        .is_some_and(|kind| {
+                            matches!(kind, "ledger_history" | "ledger_event" | "check_log")
+                        })
+                {
+                    object.insert(
+                        "id".into(),
+                        json!(format!("ref:{}", hash::value(&original))),
+                    );
+                }
             }
         }
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
@@ -349,6 +359,7 @@ fn project_from(
     if let Ok(context) = crate::context::project(work, view, status, &resolved_next) {
         packet["context"] = context;
     }
+    sanitize_assignment(&mut packet);
     packet
 }
 
