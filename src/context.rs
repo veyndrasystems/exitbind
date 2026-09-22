@@ -445,11 +445,13 @@ fn check_log_ref(work: &str, view: &Value, check_sha: &str) -> Option<Value> {
 /// Public evidence references identify canonical bytes without carrying the
 /// state-root transport needed to resolve them.
 pub(crate) fn artifact_reference(artifact: &Value, kind: &str) -> Value {
-    json!({
+    let reference = json!({
         "kind": kind,
         "sha256": artifact["sha256"],
         "bytes": artifact["bytes"],
-    })
+        "exact": true,
+    });
+    reference
 }
 
 fn set_opaque_id(reference: &mut Value) {

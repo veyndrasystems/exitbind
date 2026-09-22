@@ -155,7 +155,14 @@ fn assert_resolver_backed_references(value: &Value) {
                 assert_eq!(object.get("exact"), Some(&json!(true)));
                 assert!(matches!(
                     object.get("kind").and_then(Value::as_str),
-                    Some("ledger_history" | "ledger_event" | "check_log")
+                    Some(
+                        "ledger_history"
+                            | "ledger_event"
+                            | "check_log"
+                            | "evidence"
+                            | "stdout"
+                            | "stderr",
+                    )
                 ));
             }
             if object.contains_key("path") {

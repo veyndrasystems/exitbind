@@ -721,7 +721,6 @@ fn agent_response(mut value: Value) -> Value {
     crate::work::packet::sanitize_assignment(&mut value);
     value
 }
-
 fn safe_action(kind: &str) -> Value {
     json!({"type": kind, "safe": true})
 }
