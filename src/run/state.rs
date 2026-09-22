@@ -1168,16 +1168,14 @@ fn apply_protection(state: &mut Value, event: &Value) -> Result<(), String> {
     Ok(())
 }
 
-fn apply_disposition(state: &mut Value, event: &Value, _assignment: &Value) -> Result<(), String> {
+pub(crate) fn validate_disposition(
+    state: &Value,
+    disposition: &crate::kernel::basis::Disposition,
+) -> Result<(), String> {
     let pending = state
         .get("pendingDisposition")
         .filter(|value| value.is_object())
         .ok_or("Lead disposition is not currently pending")?;
-    let disposition = event
-        .get("disposition")
-        .ok_or("Lead disposition is missing")?;
-    let disposition = crate::kernel::basis::parse_disposition(disposition, "disposition")
-        .map_err(|error| error.to_string())?;
     if disposition.basis_sha256.as_deref() != state["basis"]["sha256"].as_str()
         || pending["basisSha256"] != state["basis"]["sha256"]
         || pending["owner"] != "lead"
@@ -1185,6 +1183,21 @@ fn apply_disposition(state: &mut Value, event: &Value, _assignment: &Value) -> R
     {
         return Err("Lead disposition does not match the pending finding cycle".into());
     }
+    if let Some(successor) = &disposition.successor_basis {
+        let current = crate::kernel::basis::parse_basis(&state["basis"], "current basis")
+            .map_err(|error| error.to_string())?;
+        crate::kernel::basis::validate_successor(&current, successor)?;
+    }
+    Ok(())
+}
+
+fn apply_disposition(state: &mut Value, event: &Value, _assignment: &Value) -> Result<(), String> {
+    let disposition = event
+        .get("disposition")
+        .ok_or("Lead disposition is missing")?;
+    let disposition = crate::kernel::basis::parse_disposition(disposition, "disposition")
+        .map_err(|error| error.to_string())?;
+    validate_disposition(state, &disposition)?;
     let mut submission = json!({
         "stage": event["stage"],
         "attempt": event["attempt"],

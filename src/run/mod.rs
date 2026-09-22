@@ -1167,6 +1167,9 @@ where
         if state["governor"]["enabled"] == true && state["governor"]["state"] == "blocked" {
             return Err("governor is durably blocked; work result refused".into());
         }
+        if state["status"] != "running" {
+            return Err("run has already reached a terminal state; no mutation was made".into());
+        }
         assert_no_drift(loaded, &state)?;
         crate::run::artifact::assert_current(loaded, &state)?;
         if agent == "lead"
@@ -1197,6 +1200,24 @@ where
                 );
             }
         }
+        if outcome == "disposition" && assignment["role"] != "lead" {
+            return Err("disposition requires the pending Lead assignment".into());
+        }
+        if outcome != "disposition" && disposition.is_some() {
+            return Err("--disposition requires --outcome disposition".into());
+        }
+        let parsed_disposition = if outcome == "disposition" {
+            let raw = disposition
+                .or(reason)
+                .ok_or("a disposition submission requires --disposition JSON")?;
+            let parsed: Value = serde_json::from_str(raw)
+                .map_err(|error| format!("disposition is not valid JSON: {error}"))?;
+            let parsed = crate::kernel::basis::parse_disposition(&parsed, "disposition")?;
+            run_state::validate_disposition(&state, &parsed)?;
+            Some(parsed)
+        } else {
+            None
+        };
         let mut grant_hashes = Vec::new();
         if state["governor"]["enabled"] == true
             && assignment["role"] == "worker"
@@ -1299,13 +1320,7 @@ where
             event_value["basisSha256"] = state["basis"]["sha256"].clone();
             event_value["reviewDecisionSha256"] = state["reviewPolicy"]["sha256"].clone();
         }
-        if outcome == "disposition" {
-            let raw = disposition
-                .or(reason)
-                .ok_or("a disposition submission requires --disposition JSON")?;
-            let parsed: Value = serde_json::from_str(raw)
-                .map_err(|error| format!("disposition is not valid JSON: {error}"))?;
-            let disposition = crate::kernel::basis::parse_disposition(&parsed, "disposition")?;
+        if let Some(disposition) = parsed_disposition {
             event_value["disposition"] = disposition.value();
         }
         if let Some(fallback) = fallback_provenance(&assignment, outcome, reason, version)? {
