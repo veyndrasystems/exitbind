@@ -1,4 +1,5 @@
 use serde_json::{json, Map, Value};
+use std::collections::BTreeSet;
 
 const SHA_LEN: usize = 64;
 const ROLES: &[&str] = &["lead", "adviser", "worker", "reviewer"];
@@ -66,6 +67,7 @@ pub fn reduce(events: &[Value]) -> Result<Value, String> {
     if let Some(subject) = first.get("subject") {
         state["subject"] = subject.clone();
     }
+    let mut request_scopes = BTreeSet::new();
     for (index, event) in events.iter().enumerate().skip(1) {
         validate_event(event, events.get(index - 1), index + 1)?;
         if event["runId"] != first["runId"] {
@@ -79,6 +81,23 @@ pub fn reduce(events: &[Value]) -> Result<Value, String> {
                 "invalid run ledger line {}: governor action requires a v0.22 marker",
                 index + 1
             ));
+        }
+        if let Some(request_id) = event.get("requestId").and_then(Value::as_str) {
+            let scope = crate::evidence::hash::value(&json!({
+                "runId": event["runId"],
+                "stage": event["stage"],
+                "attempt": event["attempt"],
+                "agent": event["agent"],
+                "role": event["role"],
+                "assignmentSha256": event["assignmentSha256"],
+                "requestId": request_id,
+            }));
+            if !request_scopes.insert(scope) {
+                return Err(format!(
+                    "invalid run ledger line {}: duplicate governor request identity",
+                    index + 1
+                ));
+            }
         }
         if state["governor"]["grantProtocol"] == crate::context::GRANT_PROTOCOL_VERSION
             && event["action"] == "submit"
@@ -759,11 +778,56 @@ fn validate_governor_event(event: &Value, line: usize) -> Result<(), String> {
             "invalid run ledger line {line}: governor operation is invalid"
         ));
     }
+    let request_id = event.get("requestId");
+    let request_digest = event.get("requestDigest");
+    if request_id.is_some() != request_digest.is_some()
+        || request_id.is_some_and(|value| {
+            value.as_str().map_or(true, |value| {
+                value.trim().is_empty()
+                    || value.len() > crate::run::REQUEST_ID_MAX_BYTES
+                    || value.contains('\0')
+            })
+        })
+        || request_digest.is_some_and(|value| !is_sha(value.as_str()))
+    {
+        return Err(format!(
+            "invalid run ledger line {line}: governor request identity is malformed"
+        ));
+    }
     let Some(governor_event) = event.get("governorEvent") else {
         return Err(format!(
             "invalid run ledger line {line}: governor event is missing"
         ));
     };
+    if governor_event.get("requestId") != request_id
+        || governor_event.get("requestDigest") != request_digest
+    {
+        return Err(format!(
+            "invalid run ledger line {line}: governor request identity does not bind to the action"
+        ));
+    }
+    if let (Some(request_id), Some(request_digest)) = (
+        request_id.and_then(Value::as_str),
+        request_digest.and_then(Value::as_str),
+    ) {
+        let expected = crate::run::governor_request_digest(
+            event["runId"].as_str().unwrap_or_default(),
+            event["stage"].as_u64().unwrap_or_default(),
+            event["attempt"].as_u64().unwrap_or_default(),
+            event["agent"].as_str().unwrap_or_default(),
+            event["role"].as_str().unwrap_or_default(),
+            event["subjectSha256"].as_str().unwrap_or_default(),
+            event["inputsSha256"].as_str().unwrap_or_default(),
+            event["assignmentSha256"].as_str().unwrap_or_default(),
+            event["operation"].as_str().unwrap_or_default(),
+            request_id,
+        );
+        if request_digest != expected {
+            return Err(format!(
+                "invalid run ledger line {line}: governor request digest does not match its binding"
+            ));
+        }
+    }
     let action = governor_event["action"].as_str().unwrap_or_default();
     if governor_event["runId"] != event["runId"]
         || governor_event["subjectSha256"] != event["subjectSha256"]
@@ -1564,6 +1628,8 @@ fn reject_unknown(
                 "inputsSha256",
                 "assignmentSha256",
                 "operation",
+                "requestId",
+                "requestDigest",
                 "governorEvent",
                 "previousEventSha256",
                 "timestamp",

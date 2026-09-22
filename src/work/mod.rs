@@ -162,6 +162,7 @@ pub(crate) fn permit(
     work: &str,
     assignment: &str,
     operation: &str,
+    request_id: Option<&str>,
 ) -> Result<Value, String> {
     let ledger = resolve(loaded, work)?;
     let action = next_for(loaded, work, &ledger)?;
@@ -172,15 +173,20 @@ pub(crate) fn permit(
         return Err("assignment is not the current pending work action".into());
     }
     let expected = run::AssignmentIdentity::from_action(&action)?;
-    let permission =
-        run::permit_for_assignment(loaded, &ledger, work, assignment, expected, operation)?;
-    Ok(agent_response(json!({
+    let permission = run::permit_for_assignment(
+        loaded, &ledger, work, assignment, expected, operation, request_id,
+    )?;
+    let mut response = json!({
         "work": work,
         "allowed": permission["allowed"],
         "event": permission["event"],
         "governor": permission["governor"],
         "next": next_for(loaded, work, &ledger)?,
-    })))
+    });
+    if let Some(idempotent) = permission.get("idempotent") {
+        response["idempotent"] = idempotent.clone();
+    }
+    Ok(agent_response(response))
 }
 
 pub(crate) fn replan(
