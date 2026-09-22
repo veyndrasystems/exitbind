@@ -123,6 +123,313 @@ impl Drop for Fixture {
     }
 }
 
+fn assert_no_transport_paths(value: &Value) {
+    match value {
+        Value::Object(object) => {
+            for key in [
+                "artifactPathHint",
+                "artifactRootHint",
+                "ledgerPath",
+                "path",
+                "profilePath",
+                "root",
+                "sourcePath",
+            ] {
+                assert!(!object.contains_key(key), "transport path leaked: {key}");
+            }
+            object.values().for_each(assert_no_transport_paths);
+        }
+        Value::Array(values) => values.iter().for_each(assert_no_transport_paths),
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+    }
+}
+
+fn assert_resolver_backed_references(value: &Value) {
+    match value {
+        Value::Object(object) => {
+            if object
+                .get("id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| id.starts_with("ref:"))
+            {
+                assert_eq!(object.get("exact"), Some(&json!(true)));
+                assert!(matches!(
+                    object.get("kind").and_then(Value::as_str),
+                    Some("ledger_history" | "ledger_event" | "check_log")
+                ));
+            }
+            if object.contains_key("path") {
+                assert!(!object
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| id.starts_with("ref:")));
+            }
+            object.values().for_each(assert_resolver_backed_references);
+        }
+        Value::Array(values) => values.iter().for_each(assert_resolver_backed_references),
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+    }
+}
+
+fn resolver_ids(value: &Value, ids: &mut Vec<String>) {
+    match value {
+        Value::Object(object) => {
+            if let Some(id) = object.get("id").and_then(Value::as_str) {
+                if id.starts_with("ref:") {
+                    ids.push(id.to_owned());
+                }
+            }
+            object.values().for_each(|value| resolver_ids(value, ids));
+        }
+        Value::Array(values) => values.iter().for_each(|value| resolver_ids(value, ids)),
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+    }
+}
+
+fn canonical(value: &Value) -> String {
+    match value {
+        Value::Object(object) => {
+            let mut keys = object.keys().collect::<Vec<_>>();
+            keys.sort();
+            format!(
+                "{{{}}}",
+                keys.into_iter()
+                    .map(|key| {
+                        format!(
+                            "{}:{}",
+                            serde_json::to_string(key).unwrap(),
+                            canonical(&object[key])
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        }
+        Value::Array(values) => format!(
+            "[{}]",
+            values.iter().map(canonical).collect::<Vec<_>>().join(",")
+        ),
+        _ => serde_json::to_string(value).unwrap(),
+    }
+}
+
+fn refresh_digest(value: &mut Value) {
+    value.as_object_mut().unwrap().remove("digest");
+    let digest = Sha256::digest(canonical(value).as_bytes());
+    value["digest"] = json!(digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>());
+}
+
+#[test]
+fn agent_facing_projection_strips_memory_transport_paths() {
+    let fixture = Fixture::new();
+    let config: Value = serde_json::from_slice(&fs::read(&fixture.config).unwrap()).unwrap();
+    let mut config = config;
+    config["memory"] = json!({
+        "root": ".exitbind/memory",
+        "maxItems": 8,
+        "maxBytes": 4096,
+        "protocolScopes": ["invariants"],
+        "syntheticScopes": []
+    });
+    for agent in ["lead", "worker"] {
+        config["agents"][agent]["memoryRead"] = json!(["invariants"]);
+        config["agents"][agent]["crossContext"] = json!("protocol-only");
+    }
+    config["agents"]["lead"]["memoryWrite"] = json!(["invariants"]);
+    config["agents"]["lead"]["memoryReview"] = json!(["invariants"]);
+    config["agents"]["lead"]["memoryPromote"] = json!(["invariants"]);
+    fs::write(
+        &fixture.config,
+        format!("{}\n", serde_json::to_string_pretty(&config).unwrap()),
+    )
+    .unwrap();
+    fs::write(fixture.root.join("memory.md"), "accepted invariant\n").unwrap();
+    let ledger = ".exitbind/memory/invariant.jsonl";
+    for args in [
+        vec![
+            "memory",
+            "propose",
+            "lead",
+            "memory.md",
+            "--scope",
+            "invariants",
+            "--ledger",
+            ledger,
+        ],
+        vec!["memory", "review", "lead", ledger],
+        vec!["memory", "promote", "lead", ledger],
+    ] {
+        let output = fixture.call(&args);
+        assert!(output.status.success(), "{args:?}: {output:?}");
+    }
+
+    let started = fixture.json(&[
+        "work",
+        "begin",
+        "change",
+        "--goal",
+        "opaque memory projection",
+        "--check-command",
+        "true",
+    ]);
+    let work = started["work"].as_str().unwrap().to_owned();
+    let scoped = fixture.return_body(
+        &work,
+        started["next"]["assignment"].as_str().unwrap(),
+        "scoped",
+        b"scope\n",
+    );
+    assert!(scoped.status.success(), "{scoped:?}");
+    let next = fixture.json(&["work", "next", &work]);
+
+    assert_no_transport_paths(&started);
+    assert_no_transport_paths(&next);
+    assert_resolver_backed_references(&started);
+    assert_resolver_backed_references(&next);
+    assert!(next["next"]["packet"]["memoryReferences"].is_array());
+}
+
+#[test]
+fn historical_v2_context_is_accepted_as_stale_not_malformed() {
+    let fixture = Fixture::new();
+    let started = fixture.json(&[
+        "work",
+        "begin",
+        "change",
+        "--goal",
+        "historical opaque context",
+        "--check-command",
+        "true",
+    ]);
+    let work = started["work"].as_str().unwrap();
+    let residual = fixture.json(&["work", "next", work])["residual"].clone();
+    let packet_path = fixture.root.join(".exitbind/legacy-residual.json");
+    let mut legacy = residual;
+    legacy["context"]["version"] = json!(2);
+    refresh_digest(&mut legacy["context"]);
+    fs::write(&packet_path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+    let packet_path = packet_path.to_str().unwrap();
+    let validated = fixture.json(&["work", "validate", work, "--packet", packet_path]);
+    assert_eq!(validated["result"], "refresh_required");
+    assert_eq!(validated["reason"], "context_projection_changed");
+}
+
+#[test]
+fn fresh_or_compacted_consumer_gets_current_packet_blockers_and_resolvers() {
+    let fixture = Fixture::new();
+    let started = fixture.json(&[
+        "work",
+        "begin",
+        "change",
+        "--goal",
+        "fresh consumer minimum",
+        "--check-command",
+        "true",
+    ]);
+    let work = started["work"].as_str().unwrap().to_owned();
+    let scoped = fixture.return_body(
+        &work,
+        started["next"]["assignment"].as_str().unwrap(),
+        "scoped",
+        b"scope\n",
+    );
+    assert!(scoped.status.success(), "{scoped:?}");
+    let next_output = fixture.call(&["work", "next", &work]);
+    assert!(next_output.status.success(), "{next_output:?}");
+    let next: Value = serde_json::from_slice(&next_output.stdout).unwrap();
+    let resumed = fixture.json(&["work", "resume"]);
+    let packet = &resumed["residual"];
+    let next_context = &next["next"]["packet"]["context"];
+    let context = &packet["context"];
+
+    assert_eq!(next["work"], work);
+    assert_eq!(resumed["work"], work);
+    assert_no_transport_paths(&next);
+    assert_no_transport_paths(&resumed);
+    assert_resolver_backed_references(&next);
+    assert_resolver_backed_references(&resumed);
+
+    // These are the pre-context packet fields consumed by older JSON clients;
+    // context is additive and does not replace the raw packet shape.
+    for field in [
+        "version",
+        "work",
+        "workflow",
+        "goal",
+        "historical",
+        "snapshot",
+        "alreadyEstablished",
+        "stillValid",
+        "remaining",
+        "next",
+        "doNotRepeat",
+        "invalidation",
+    ] {
+        assert!(
+            packet.get(field).is_some(),
+            "legacy packet field missing: {field}"
+        );
+    }
+    assert_eq!(packet["version"], 2);
+    assert!(packet["snapshot"]["eventCount"].is_u64());
+    assert!(packet["snapshot"]["headEventSha256"].is_string());
+    assert!(packet["snapshot"]["inputsSha256"].is_string());
+    assert!(!packet["remaining"].as_array().unwrap().is_empty());
+    assert!(packet["humanHelp"]["whatRemains"].is_array());
+    assert!(packet["humanHelp"]["nextAction"]["actor"].is_string());
+    assert!(packet["humanHelp"]["nextAction"]["summary"].is_string());
+    assert!(packet["humanHelp"]["nextAction"]["command"].is_object());
+
+    for field in [
+        "version",
+        "run",
+        "subject",
+        "goal",
+        "scope",
+        "obligations",
+        "evidence",
+        "loop",
+        "next",
+        "expansions",
+        "recovery",
+        "digest",
+    ] {
+        assert!(
+            context.get(field).is_some(),
+            "context field missing: {field}"
+        );
+    }
+    assert_eq!(context["version"], 3);
+    assert_eq!(context["scope"]["freshness"], "current");
+    assert_eq!(context["next"]["freshness"], "current");
+    assert_eq!(next_context, context);
+    assert_eq!(context["recovery"]["next"], context["next"]);
+    assert!(!context["recovery"]["missing"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert_eq!(context["recovery"]["stale"], json!([]));
+
+    let mut ids = Vec::new();
+    resolver_ids(context, &mut ids);
+    ids.sort();
+    ids.dedup();
+    assert!(!ids.is_empty());
+    for id in ids {
+        let expanded = fixture.call(&["work", "expand", &work, &id]);
+        assert!(expanded.status.success(), "{id}: {expanded:?}");
+        let expanded: Value = serde_json::from_slice(&expanded.stdout).unwrap();
+        assert_eq!(expanded["valid"], true, "{id}: {expanded}");
+    }
+
+    let resumed_context = &resumed["residual"]["context"];
+    assert_eq!(resumed_context["digest"], context["digest"]);
+    assert_eq!(resumed_context["next"], context["next"]);
+}
+
 #[test]
 fn worker_packet_carries_resolved_preservation_assignment_before_artifact() {
     let fixture = Fixture::new();
@@ -325,7 +632,7 @@ fn work_projection_is_thin_exact_and_recoverable_without_replay() {
     assert!(started["next"]["packet"]["context"]["digest"].is_string());
     let residual = fixture.json(&["work", "next", &work]);
     let context = &residual["residual"]["context"];
-    assert_eq!(context["version"], 2);
+    assert_eq!(context["version"], 3);
     assert_eq!(context["role"], "lead");
     assert_eq!(context["run"]["workflow"], "change");
     assert!(context["goal"].is_string());
@@ -943,6 +1250,22 @@ fn nonmutation_evidence_then_implicit_completion_is_typed() {
         "state",
     ]);
     assert!(evidenced.status.success(), "{evidenced:?}");
+    let evidenced: Value = serde_json::from_slice(&evidenced.stdout).unwrap();
+    assert_no_transport_paths(&evidenced);
+    assert_resolver_backed_references(&evidenced);
+    let next = fixture.json(&["work", "next", &work]);
+    assert_no_transport_paths(&next);
+    let packet_path = fixture.root.join(".exitbind/evidence-residual.json");
+    fs::write(&packet_path, serde_json::to_vec(&next["residual"]).unwrap()).unwrap();
+    let validated = fixture.json(&[
+        "work",
+        "validate",
+        &work,
+        "--packet",
+        packet_path.to_str().unwrap(),
+    ]);
+    assert_eq!(validated["result"], "usable");
+    assert_no_transport_paths(&validated);
     let completed = fixture.return_body(&work, &assignment, "completed", b"implicit result\n");
     assert!(completed.status.success(), "{completed:?}");
     let ledger = format!(
