@@ -11,6 +11,15 @@ handoffs and evidence. Discuss a proposed change before implementing it when it
 would alter a public invariant, persisted format, trust boundary, or release
 contract.
 
+## Public identity
+
+Use `Veyndra Systems` as the human-facing author, owner, and developer name.
+Use `veyndrasystems` only as the GitHub account or repository URL slug. Direct
+commits should use `Veyndra Systems <veyndra-operator@users.noreply.github.com>`.
+GitHub-generated squash metadata may use the account slug; `.mailmap` maps that
+identity back to the canonical display name. Do not rewrite published history
+to change older metadata.
+
 ## Development setup
 
 Clone the repository and work from its root. Rustup automatically selects and,
