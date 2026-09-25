@@ -76,6 +76,11 @@ When a complete view exceeds that bound, it returns section commands; an
 oversized section returns indexed item commands. For example,
 `work continuation WORK --section children --index 0` reads one exact result
 without opening an internal ledger.
+An oversized requirement item returns a `historyRead` route; use
+`work continuation WORK --section requirements --index 0 --history-index 0`
+to read one prior revision. At most 32 prior revisions are retained per
+requirement, and a further refinement is refused rather than making the
+current requirement unreadable.
 Only the relevant local task state should cross hosts; transcripts, hidden
 reasoning, credentials and unrelated personal memory do not belong in these
 records.

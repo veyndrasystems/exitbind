@@ -28,6 +28,7 @@ const VALUE_OPTIONS: &[&str] = &[
     "goal",
     "harness-receipt",
     "harness-manifest",
+    "history-index",
     "hosts",
     "hypothesis",
     "identity-source",

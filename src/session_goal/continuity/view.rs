@@ -138,7 +138,11 @@ const SECTIONS: [&str; 7] = [
 ];
 
 fn bounded(value: &Value) -> Result<bool, String> {
-    Ok(serde_json::to_vec(value).map_err(|e| e.to_string())?.len() <= 64 * 1024)
+    Ok(serde_json::to_string_pretty(value)
+        .map_err(|e| e.to_string())?
+        .len()
+        + 1
+        <= 64 * 1024)
 }
 
 pub(crate) fn continuation_view(loaded: &Loaded, work_id: &str) -> Result<Value, String> {
@@ -164,6 +168,7 @@ pub(crate) fn continuation_section(
     work_id: &str,
     section: &str,
     index: Option<&str>,
+    history_index: Option<&str>,
 ) -> Result<Value, String> {
     if !SECTIONS.contains(&section) {
         return Err("unknown continuation section".into());
@@ -178,12 +183,47 @@ pub(crate) fn continuation_section(
             .as_array()
             .and_then(|items| items.get(index))
             .ok_or("section item is unavailable")?;
+        if let Some(history_index) = history_index {
+            if section != "requirements" {
+                return Err("--history-index requires the requirements section".into());
+            }
+            let history_index = history_index
+                .parse::<usize>()
+                .map_err(|_| "invalid history index")?;
+            let history = item["requirement"]["history"]
+                .as_array()
+                .and_then(|items| items.get(history_index))
+                .ok_or("requirement history item is unavailable")?;
+            return Ok(json!({"work":work_id,"goalRevision":full["goalRevision"],
+                "section":section,"index":index,"historyIndex":history_index,
+                "historyEntry":history,"readOnly":true}));
+        }
         let result = json!({"work":work_id,"goalRevision":full["goalRevision"],
             "section":section,"index":index,"item":item,"readOnly":true});
-        if !bounded(&result)? {
+        if bounded(&result)? {
+            return Ok(result);
+        }
+        if section != "requirements" {
             return Err("section item exceeds 64 KiB".into());
         }
-        return Ok(result);
+        let history = item["requirement"]["history"]
+            .as_array()
+            .ok_or("oversized requirement has no history")?;
+        let mut compact_item = item.clone();
+        compact_item["requirement"]["history"] = Value::Null;
+        let summary = json!({"work":work_id,"goalRevision":full["goalRevision"],
+            "section":section,"index":index,"item":compact_item,
+            "historyCount":history.len(),
+            "historyRead":["work","continuation",work_id,"--section","requirements",
+                "--index",index.to_string(),"--history-index","N"],
+            "requiresExpansion":true,"readOnly":true});
+        if !bounded(&summary)? {
+            return Err("requirement item exceeds 64 KiB after history expansion".into());
+        }
+        return Ok(summary);
+    }
+    if history_index.is_some() {
+        return Err("--history-index requires --index".into());
     }
     let result = json!({"work":work_id,"goalRevision":full["goalRevision"],
         "section":section,"value":value,"readOnly":true});

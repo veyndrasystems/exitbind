@@ -599,3 +599,73 @@ fn successor_goal_does_not_inherit_a_different_works_continuation() {
     assert!(changed["continuation"].is_null());
     assert!(f.call(&["work", "next", &f.work]).status.success());
 }
+
+#[test]
+fn long_requirement_history_has_bounded_exact_read_and_refinement_limit() {
+    let f = Fixture::new("w2ch-history-expansion");
+    f.initialize();
+    f.ok(
+        json!({"action":"bind","expectedRevision":1,"expectedBindingRevision":0,
+        "host":"codex","session":"s1","hostVersion":"0.156.1"}),
+    );
+    let prior_text = "First requirement.";
+    for index in 0..32_u64 {
+        f.ok(json!({"action":"refine","expectedRevision":index + 2,
+            "bindingRevision":1,"id":"first",
+            "text":format!("revision-{index}-{}", "\n".repeat(1000)),
+            "sourceRef":format!("operator:{index}-{}", "\n".repeat(240)),
+            "expectedRequirementRevision":index + 1}));
+    }
+    let before = f.history();
+    let rejected = f.record(json!({"action":"refine","expectedRevision":34,
+        "bindingRevision":1,"id":"first","text":"one revision too many",
+        "sourceRef":"operator:limit","expectedRequirementRevision":33}));
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr)
+        .contains("requirement refinement history bound exceeded"));
+    assert_eq!(f.history(), before);
+
+    let summary = f.call(&["work", "continuation", &f.work]);
+    assert!(summary.status.success(), "{summary:?}");
+    assert!(summary.stdout.len() <= 64 * 1024);
+    let summary: Value = serde_json::from_slice(&summary.stdout).unwrap();
+    assert_eq!(summary["requiresExpansion"], true);
+
+    let section = f.call(&["work", "continuation", &f.work, "--section", "requirements"]);
+    assert!(section.status.success(), "{section:?}");
+    assert!(section.stdout.len() <= 64 * 1024);
+    let section: Value = serde_json::from_slice(&section.stdout).unwrap();
+    assert_eq!(section["requiresExpansion"], true);
+
+    let item = f.call(&[
+        "work",
+        "continuation",
+        &f.work,
+        "--section",
+        "requirements",
+        "--index",
+        "0",
+    ]);
+    assert!(item.status.success(), "{item:?}");
+    assert!(item.stdout.len() <= 64 * 1024);
+    let item: Value = serde_json::from_slice(&item.stdout).unwrap();
+    assert_eq!(item["requiresExpansion"], true);
+    assert_eq!(item["historyCount"], 32);
+
+    let history = f.call(&[
+        "work",
+        "continuation",
+        &f.work,
+        "--section",
+        "requirements",
+        "--index",
+        "0",
+        "--history-index",
+        "0",
+    ]);
+    assert!(history.status.success(), "{history:?}");
+    assert!(history.stdout.len() <= 64 * 1024);
+    let history: Value = serde_json::from_slice(&history.stdout).unwrap();
+    assert_eq!(history["historyEntry"]["text"], prior_text);
+    assert_eq!(history["historyIndex"], 0);
+}

@@ -140,10 +140,13 @@ fn apply(loaded: &Loaded, work_id: &str, previous: &Value, input: &Value) -> Res
             if requirement["history"].as_array().is_none() {
                 requirement["history"] = json!([]);
             }
-            requirement["history"]
+            let history = requirement["history"]
                 .as_array_mut()
-                .ok_or("requirement history malformed")?
-                .push(json!({"revision":old,"text":previous_text,"sourceRef":previous_source}));
+                .ok_or("requirement history malformed")?;
+            if history.len() >= MAX_ITEMS {
+                return Err("requirement refinement history bound exceeded".into());
+            }
+            history.push(json!({"revision":old,"text":previous_text,"sourceRef":previous_source}));
             requirement["text"] = json!(text);
             requirement["revision"] = json!(old + 1);
             requirement["sourceRef"] = json!(source_ref);
