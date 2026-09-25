@@ -11,6 +11,18 @@ const MAX_INPUT: u64 = 16 * 1024;
 const MAX_SOURCE: usize = 8 * 1024;
 const MAX_ITEMS: usize = 32;
 
+fn child_key(origin: &Value, native_child: &str) -> String {
+    hash::value(
+        &json!({"host":origin["host"],"session":origin["session"],"nativeChild":native_child}),
+    )
+}
+
+fn evidence_verified(inspected: &Value) -> bool {
+    inspected["evidence"]
+        .as_array()
+        .is_some_and(|items| items.iter().all(|item| item["status"] == "verified"))
+}
+
 fn field<'a>(value: &'a Value, key: &str, max: usize) -> Result<&'a str, String> {
     value[key]
         .as_str()
@@ -127,4 +139,4 @@ fn init(loaded: &Loaded, work_id: &str, input: &Value) -> Result<Value, String> 
 mod record;
 mod view;
 pub(crate) use record::continuation_record;
-pub(crate) use view::{continuation_view, has_unresolved, support_current};
+pub(crate) use view::{continuation_section, continuation_view, has_unresolved, support_current};

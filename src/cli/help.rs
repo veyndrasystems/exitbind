@@ -8,7 +8,9 @@ pub(super) fn scoped_help(command: &str, positional: &[String]) -> Option<String
         }
         ["work", "begin"] => "work begin WORKFLOW --goal GOAL --check-command COMMAND",
         ["work", "next"] => "work next WORK [--json] [--full]",
-        ["work", "continuation"] => "work continuation WORK [--config CONFIG]",
+        ["work", "continuation"] => {
+            "work continuation WORK [--section NAME [--index N]] [--config CONFIG]"
+        }
         ["work", "record"] => "work record WORK [--config CONFIG] < JSON",
         ["work", "permit"] => "work permit WORK ASSIGNMENT --operation OPERATION [--request-id ID]",
         ["work", "replan"] => {

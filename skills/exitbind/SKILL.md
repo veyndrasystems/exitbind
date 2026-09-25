@@ -32,8 +32,9 @@ to recover the current assignment. If its response includes `continuation`,
 read that bounded view for the original requirements, current corrections,
 exact result references, binding, and uncertain operations. Use
 `exitbind work continuation WORK` for the full read-only view when expansion is
-required. Do not inspect raw state files or infer a retry from a missing
-native process.
+required. If it returns `requiresExpansion`, follow the section and item
+commands it gives to read exact bounded facts. Do not inspect raw state files
+or infer a retry from a missing native process.
 
 Exitbind owns the checked-run lifecycle and exact-subject exit semantics. The
 host owns models, tools, process execution, permissions, and merge authority.

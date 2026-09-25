@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use std::path::Path;
 
 mod continuity;
-pub(crate) use continuity::{continuation_record, continuation_view};
+pub(crate) use continuity::{continuation_record, continuation_section, continuation_view};
 
 const FILE: &str = "session-goal.jsonl";
 const CATEGORIES: [&str; 5] = [
@@ -530,7 +530,7 @@ pub(crate) fn incorporate(
         Ok(sealed(
             json!({
                 "kind": "lead_session_goal",
-                "version": if previous.is_some_and(|record| !record["continuation"].is_null()) { 3 } else { 2 },
+                "version": if previous.is_some_and(|record| record["goalId"] == goal_id && !record["continuation"].is_null()) { 3 } else { 2 },
                 "goalId": goal_id,
                 "revision": revision,
                 "goal": goal,
@@ -544,7 +544,7 @@ pub(crate) fn incorporate(
                 "externalActions": external_actions,
                 "categories": category_state,
                 "closure": {"closed": false, "revision": Value::Null, "resultRefs": []},
-                "continuation": previous.map_or(Value::Null, |record| record["continuation"].clone()),
+                "continuation": previous.filter(|record| record["goalId"] == goal_id).map_or(Value::Null, |record| record["continuation"].clone()),
             }),
             previous,
         ))
@@ -638,7 +638,7 @@ pub(crate) fn direct_complete(
         Ok(sealed(
             json!({
                 "kind": "lead_session_goal",
-                "version": if previous.is_some_and(|record| !record["continuation"].is_null()) { 3 } else { 2 },
+                "version": if previous.is_some_and(|record| record["goalId"] == goal_id && !record["continuation"].is_null()) { 3 } else { 2 },
                 "goalId": goal_id,
                 "revision": revision,
                 "goal": goal,
@@ -652,7 +652,7 @@ pub(crate) fn direct_complete(
                 "externalActions": external_actions,
                 "categories": category_state,
                 "closure": {"closed": false, "revision": Value::Null, "resultRefs": []},
-                "continuation": previous.map_or(Value::Null, |record| record["continuation"].clone()),
+                "continuation": previous.filter(|record| record["goalId"] == goal_id).map_or(Value::Null, |record| record["continuation"].clone()),
             }),
             previous,
         ))

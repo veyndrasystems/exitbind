@@ -52,8 +52,9 @@ transaction across concurrent goal and run writers. `work continuation`
 rechecks the event read-only and reports
 integrity separately from current applicability. Its `exactRead` locator uses
 `run inspect LEDGER --event EVENT`; reading it does not execute the check or
-resubmit a held result. A passing check for another requirement cannot close
-this one, and whole-goal readiness still requires explicit lead closure.
+resubmit a held result. A passing check for another requirement or a check
+with missing artifact bytes cannot close this one; whole-goal readiness still
+requires explicit lead closure.
 
 `correct` records an operator-asserted scoped correction and an optional
 same-scope supersession. The CLI cannot independently prove the caller's human
@@ -65,11 +66,16 @@ origin host. No missing process-list entry authorizes another dispatch.
 `diagnose` records the observation class, conditions and invalidation rule.
 
 `child` accepts the exact text returned through a native host child tool,
-with a digest, assignment and host-qualified child handle. The result is
+with a digest, assignment and child ID scoped to its originating host and
+session. The result is
 marked `host_reported_native_child`: transporting bytes does not make it an
 independent review or a lead acceptance. The CLI accepts up to 8 KiB of child
 text in a 16 KiB input object; larger outputs need a separately assessed
 artifact path and cannot be silently shortened. The view is bounded at 64 KiB.
+When a complete view exceeds that bound, it returns section commands; an
+oversized section returns indexed item commands. For example,
+`work continuation WORK --section children --index 0` reads one exact result
+without opening an internal ledger.
 Only the relevant local task state should cross hosts; transcripts, hidden
 reasoning, credentials and unrelated personal memory do not belong in these
 records.

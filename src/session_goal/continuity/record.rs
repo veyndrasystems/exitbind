@@ -317,6 +317,7 @@ fn apply(loaded: &Loaded, work_id: &str, previous: &Value, input: &Value) -> Res
                 return Err("check predates the current requirement revision".into());
             }
             if result["action"] != "check"
+                || result["acquisition"] != "observed"
                 || result["result"]["kind"] != "exit"
                 || result["result"]["code"] != 0
                 || result["requirementId"] != id
@@ -324,6 +325,9 @@ fn apply(loaded: &Loaded, work_id: &str, previous: &Value, input: &Value) -> Res
                 return Err(
                     "support requires a passing check bound to the named requirement".into(),
                 );
+            }
+            if !evidence_verified(&observed) {
+                return Err("check evidence is missing or unverified".into());
             }
             let (current_inputs, current_conditions) = current_conditions(loaded)?;
             if result["inputsSha256"] != current_inputs || conditions != current_conditions {
@@ -420,9 +424,24 @@ fn apply(loaded: &Loaded, work_id: &str, previous: &Value, input: &Value) -> Res
             if hash::text(result) != digest {
                 return Err("native child result digest mismatch".into());
             }
+            let origin = &previous["continuation"]["binding"];
+            let key = child_key(origin, child);
             if let Some(old) = previous["continuation"]["children"]
                 .as_array()
-                .and_then(|xs| xs.iter().find(|x| x["nativeChild"] == child))
+                .and_then(|xs| {
+                    xs.iter().find(|x| {
+                        x["childKey"]
+                            .as_str()
+                            .map(str::to_owned)
+                            .unwrap_or_else(|| {
+                                child_key(
+                                    &x["origin"],
+                                    x["nativeChild"].as_str().unwrap_or_default(),
+                                )
+                            })
+                            == key
+                    })
+                })
             {
                 if old["assignment"] == assignment && old["resultSha256"] == digest {
                     return Ok(previous.clone());
@@ -437,7 +456,7 @@ fn apply(loaded: &Loaded, work_id: &str, previous: &Value, input: &Value) -> Res
             if list.len() >= MAX_ITEMS {
                 return Err("native child bound exceeded".into());
             }
-            list.push(json!({"assignment":assignment,"nativeChild":child,"origin":previous["continuation"]["binding"],
+            list.push(json!({"assignment":assignment,"nativeChild":child,"childKey":key,"origin":origin,
                 "resultSha256":digest,"resultText":result,"sourceClass":"host_reported_native_child","revision":new_revision}));
         }
         _ => return Err("unsupported continuation action".into()),

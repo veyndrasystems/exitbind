@@ -16,6 +16,10 @@ struct Fixture {
 
 impl Fixture {
     fn new(label: &str) -> Self {
+        Self::with_preservation_command(label, "true")
+    }
+
+    fn with_preservation_command(label: &str, preservation_command: &str) -> Self {
         let root = support::temp(label);
         let init = Command::new(env!("CARGO_BIN_EXE_exitbind"))
             .args(["init", "--mode", "portable", "--root"])
@@ -36,7 +40,7 @@ impl Fixture {
                 "--preserve-requirement",
                 "first:First requirement.",
                 "--preservation-check-command",
-                "true",
+                preservation_command,
                 "--config",
                 "exitbind.json",
             ])
@@ -369,4 +373,229 @@ fn native_child_text_is_exact_and_retries_cannot_replace_it() {
         .status
         .success());
     assert_eq!(f.history(), before);
+}
+
+#[test]
+fn child_ids_are_scoped_to_native_sessions() {
+    let f = Fixture::new("w2ch-child-origin");
+    f.initialize();
+    f.ok(
+        json!({"action":"bind","expectedRevision":1,"expectedBindingRevision":0,
+        "host":"codex","session":"s1","hostVersion":"0.156.1"}),
+    );
+    let first = "first child result";
+    f.ok(
+        json!({"action":"child","expectedRevision":2,"bindingRevision":1,
+        "assignment":"inspect","nativeChild":"local-1","resultText":first,
+        "resultSha256":sha(first)}),
+    );
+    f.ok(
+        json!({"action":"bind","expectedRevision":3,"expectedBindingRevision":1,
+        "host":"claude","session":"s2","hostVersion":"2.1.280"}),
+    );
+    let second = "different child result";
+    let input = json!({"action":"child","expectedRevision":4,"bindingRevision":2,
+        "assignment":"inspect","nativeChild":"local-1","resultText":second,
+        "resultSha256":sha(second)});
+    f.ok(input.clone());
+    let view = f.view();
+    assert_eq!(view["children"].as_array().unwrap().len(), 2);
+    assert_ne!(
+        view["children"][0]["childKey"],
+        view["children"][1]["childKey"]
+    );
+    assert_eq!(view["children"][0]["origin"]["session"], "s1");
+    assert_eq!(view["children"][1]["origin"]["session"], "s2");
+    let before = f.history();
+    f.ok(input);
+    assert_eq!(f.history(), before);
+}
+
+#[test]
+fn accumulated_children_keep_a_bounded_read_only_route() {
+    let f = Fixture::new("w2ch-child-overflow");
+    f.initialize();
+    f.ok(
+        json!({"action":"bind","expectedRevision":1,"expectedBindingRevision":0,
+        "host":"claude","session":"s1","hostVersion":"2.1.280"}),
+    );
+    let text = "X".repeat(8192);
+    for index in 0..8 {
+        f.ok(
+            json!({"action":"child","expectedRevision":2+index,"bindingRevision":1,
+            "assignment":"inspect","nativeChild":format!("child-{index}"),
+            "resultText":text,"resultSha256":sha(&text)}),
+        );
+    }
+    let view = f.view();
+    assert_eq!(view["requiresExpansion"], true);
+    assert_eq!(view["sections"].as_array().unwrap().len(), 7);
+    assert!(f.call(&["work", "next", &f.work]).status.success());
+    assert!(f.call(&["work", "resume"]).status.success());
+    let section = f.call(&["work", "continuation", &f.work, "--section", "children"]);
+    assert!(section.status.success(), "{section:?}");
+    let section: Value = serde_json::from_slice(&section.stdout).unwrap();
+    assert_eq!(section["requiresExpansion"], true);
+    assert_eq!(section["count"], 8);
+    let item = f.call(&[
+        "work",
+        "continuation",
+        &f.work,
+        "--section",
+        "children",
+        "--index",
+        "7",
+    ]);
+    assert!(item.status.success(), "{item:?}");
+    let item: Value = serde_json::from_slice(&item.stdout).unwrap();
+    assert_eq!(item["item"]["resultText"], text);
+    assert_eq!(item["item"]["resultSha256"], sha(&text));
+}
+
+#[test]
+fn missing_check_logs_invalidate_support_without_erasing_history() {
+    let f = Fixture::with_preservation_command("w2ch-missing-check-log", "printf check-evidence");
+    f.ok(
+        json!({"action":"init","sourceRef":"fixture:requirements-v1",
+        "sourceText":"First requirement.",
+        "requirements":[{"id":"first","text":"First requirement."}]}),
+    );
+    f.ok(
+        json!({"action":"bind","expectedRevision":1,"expectedBindingRevision":0,
+        "host":"codex","session":"s1","hostVersion":"0.156.1"}),
+    );
+    let source_sha = f.view()["source"]["sha256"].as_str().unwrap().to_owned();
+    f.ok(
+        json!({"action":"cover","expectedRevision":2,"bindingRevision":1,
+        "sourceSha256":source_sha}),
+    );
+    f.return_stage("scoped", "Bounded scope");
+    f.return_stage("completed", "A completed worker result");
+    assert!(f.call(&["work", "check", &f.work]).status.success());
+    let checked = f.call(&["work", "check", &f.work]);
+    assert!(checked.status.success(), "{checked:?}");
+    let event: Value = serde_json::from_slice(&checked.stdout).unwrap();
+    let view = f.view();
+    f.ok(
+        json!({"action":"support","expectedRevision":3,"bindingRevision":1,
+        "requirementId":"first","requirementRevision":1,
+        "resultEventSha256":event["event"]["eventSha256"],
+        "conditionsSha256":view["currentConditionsSha256"]}),
+    );
+    assert_eq!(f.view()["requirements"][0]["unresolved"], false);
+    let completion = f.call(&[
+        "goal",
+        "incorporate",
+        "--direct",
+        "--goal-id",
+        &f.work,
+        "--goal",
+        "Finish two requirements on one work",
+        "--obligation",
+        "first",
+    ]);
+    assert!(completion.status.success(), "{completion:?}");
+    let exact = f.call(&[
+        "run",
+        "inspect",
+        &format!(
+            ".exitbind/runs/work-{}.jsonl",
+            f.work.strip_prefix("smw_").unwrap()
+        ),
+        "--event",
+        event["eventSha256"].as_str().unwrap(),
+    ]);
+    assert!(exact.status.success(), "{exact:?}");
+    let exact: Value = serde_json::from_slice(&exact.stdout).unwrap();
+    let path = exact["event"]["stdout"]["path"].as_str().unwrap();
+    fs::remove_file(f.root.join(path)).unwrap();
+    let after = f.view();
+    assert_eq!(
+        after["requirements"][0]["support"][0]["integrityCurrent"],
+        false
+    );
+    assert_eq!(after["requirements"][0]["unresolved"], true);
+    assert_eq!(after["wholeGoalReady"], false);
+    let close = f.call(&["goal", "close", "--direct", "--goal-id", &f.work]);
+    assert!(!close.status.success());
+    assert!(
+        String::from_utf8_lossy(&close.stderr)
+            .contains("continuation support is stale or incomplete"),
+        "{close:?}"
+    );
+    let before = f.history();
+    let refusal = f.record(
+        json!({"action":"support","expectedRevision":5,"bindingRevision":1,
+        "requirementId":"first","requirementRevision":1,
+        "resultEventSha256":event["event"]["eventSha256"],
+        "conditionsSha256":after["currentConditionsSha256"]}),
+    );
+    assert!(!refusal.status.success());
+    assert!(String::from_utf8_lossy(&refusal.stderr)
+        .contains("check evidence is missing or unverified"));
+    assert_eq!(f.history(), before);
+}
+
+#[test]
+fn caller_reported_check_cannot_be_observed_requirement_support() {
+    let f = Fixture::new("w2ch-reported-check");
+    f.initialize();
+    f.ok(
+        json!({"action":"bind","expectedRevision":1,"expectedBindingRevision":0,
+        "host":"codex","session":"s1","hostVersion":"0.156.1"}),
+    );
+    f.return_stage("scoped", "Bounded scope");
+    let worker = f.return_stage("completed", "A completed worker result");
+    assert!(f.call(&["work", "check", &f.work]).status.success());
+    let ledger = format!(
+        ".exitbind/runs/work-{}.jsonl",
+        f.work.strip_prefix("smw_").unwrap()
+    );
+    let reported = f.call(&[
+        "run",
+        "record-check",
+        &ledger,
+        "--target",
+        worker["eventSha256"].as_str().unwrap(),
+        "--requirement",
+        "first",
+        "--check-command",
+        "true",
+        "--exit-code",
+        "0",
+    ]);
+    assert!(reported.status.success(), "{reported:?}");
+    let reported: Value = serde_json::from_slice(&reported.stdout).unwrap();
+    let conditions = f.view()["currentConditionsSha256"].clone();
+    let before = f.history();
+    let refusal = f.record(
+        json!({"action":"support","expectedRevision":2,"bindingRevision":1,
+        "requirementId":"first","requirementRevision":1,
+        "resultEventSha256":reported["event"]["eventSha256"],
+        "conditionsSha256":conditions}),
+    );
+    assert!(!refusal.status.success());
+    assert!(String::from_utf8_lossy(&refusal.stderr)
+        .contains("support requires a passing check bound to the named requirement"));
+    assert_eq!(f.history(), before);
+}
+
+#[test]
+fn successor_goal_does_not_inherit_a_different_works_continuation() {
+    let f = Fixture::new("w2ch-successor");
+    f.initialize();
+    let changed = f.call(&[
+        "goal",
+        "incorporate",
+        "--goal-id",
+        "goal-b",
+        "--goal",
+        "New goal",
+        "--obligation",
+        "new obligation",
+    ]);
+    assert!(changed.status.success(), "{changed:?}");
+    let changed: Value = serde_json::from_slice(&changed.stdout).unwrap();
+    assert!(changed["continuation"].is_null());
+    assert!(f.call(&["work", "next", &f.work]).status.success());
 }

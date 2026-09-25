@@ -469,11 +469,21 @@ fn work_command(l: &config::Loaded, a: &Arguments) -> Result<(), String> {
     )?;
     match action {
         "continuation" => {
-            args::assert_options("work continuation", a, &["config"])?;
+            args::assert_options("work continuation", a, &["config", "section", "index"])?;
             args::assert_positionals("work continuation", a, 2)?;
-            print_json(&crate::session_goal::continuation_view(
-                l, positional(a, 1, "work continuation requires WORK")?,
-            )?)
+            let work = positional(a, 1, "work continuation requires WORK")?;
+            if let Some(section) = a.options.get("section") {
+                print_json(&crate::session_goal::continuation_section(
+                    l,
+                    work,
+                    section,
+                    a.options.get("index").map(String::as_str),
+                )?)
+            } else if a.options.contains_key("index") {
+                Err("--index requires --section".into())
+            } else {
+                print_json(&crate::session_goal::continuation_view(l, work)?)
+            }
         }
         "record" => {
             args::assert_options("work record", a, &["config"])?;

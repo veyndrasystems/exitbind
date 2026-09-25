@@ -58,8 +58,9 @@ pub(crate) fn support_current(loaded: &Loaded, record: &Value) -> Result<bool, S
             }
             if let Some(event) = support["resultEventSha256"].as_str() {
                 if run::inspect_event(loaded, &ledger, event).is_ok_and(|found| {
-                    found["eventIndex"].as_u64().unwrap_or(0)
-                        >= requirement["checkFloorIndex"].as_u64().unwrap_or(0)
+                    evidence_verified(&found)
+                        && found["eventIndex"].as_u64().unwrap_or(0)
+                            >= requirement["checkFloorIndex"].as_u64().unwrap_or(0)
                 }) {
                     applicable = true;
                     break;
@@ -73,7 +74,7 @@ pub(crate) fn support_current(loaded: &Loaded, record: &Value) -> Result<bool, S
     Ok(true)
 }
 
-pub(crate) fn continuation_view(loaded: &Loaded, work_id: &str) -> Result<Value, String> {
+fn complete_view(loaded: &Loaded, work_id: &str) -> Result<Value, String> {
     let ledger = verify_work(loaded, work_id)?;
     let record = read(&loaded.state_root)?.ok_or("continuation has not been initialized")?;
     if record["goalId"] != work_id || record["continuation"]["work"] != work_id {
@@ -95,12 +96,13 @@ pub(crate) fn continuation_view(loaded: &Loaded, work_id: &str) -> Result<Value,
         }) {
             let event = support["resultEventSha256"].as_str().unwrap_or_default();
             let found = run::inspect_event(loaded, &ledger, event);
-            let current = found.is_ok();
-            let revision_current = found.is_ok_and(|found| {
+            let current = found.as_ref().is_ok_and(evidence_verified);
+            let revision_current = found.as_ref().is_ok_and(|found| {
                 found["eventIndex"].as_u64().unwrap_or(0)
                     >= requirement["checkFloorIndex"].as_u64().unwrap_or(0)
             });
-            let applicable = revision_current
+            let applicable = current
+                && revision_current
                 && support["inputsSha256"] == current_inputs
                 && support["conditionsSha256"] == current_conditions;
             valid.push(
@@ -122,12 +124,87 @@ pub(crate) fn continuation_view(loaded: &Loaded, work_id: &str) -> Result<Value,
                 .is_some_and(|xs| xs.iter().all(|x| x["unresolved"] == false))
             && record["closure"]["closed"] == true
     );
-    if serde_json::to_vec(&result)
-        .map_err(|e| e.to_string())?
-        .len()
-        > 64 * 1024
-    {
-        return Err("continuation view exceeds 64 KiB; inspect exact goal record".into());
-    }
     Ok(result)
+}
+
+const SECTIONS: [&str; 7] = [
+    "source",
+    "requirements",
+    "binding",
+    "corrections",
+    "operations",
+    "diagnoses",
+    "children",
+];
+
+fn bounded(value: &Value) -> Result<bool, String> {
+    Ok(serde_json::to_vec(value).map_err(|e| e.to_string())?.len() <= 64 * 1024)
+}
+
+pub(crate) fn continuation_view(loaded: &Loaded, work_id: &str) -> Result<Value, String> {
+    let full = complete_view(loaded, work_id)?;
+    if bounded(&full)? {
+        return Ok(full);
+    }
+    let sections = SECTIONS
+        .iter()
+        .map(|name| json!({"name":name,"command":["work","continuation",work_id,"--section",name]}))
+        .collect::<Vec<_>>();
+    Ok(
+        json!({"work":work_id,"goalRevision":full["goalRevision"],"binding":full["binding"],
+        "sourceSha256":full["source"]["sha256"],"currentInputsSha256":full["currentInputsSha256"],
+        "currentConditionsSha256":full["currentConditionsSha256"],
+        "wholeGoalReady":full["wholeGoalReady"],"readOnly":true,"requiresExpansion":true,
+        "sections":sections}),
+    )
+}
+
+pub(crate) fn continuation_section(
+    loaded: &Loaded,
+    work_id: &str,
+    section: &str,
+    index: Option<&str>,
+) -> Result<Value, String> {
+    if !SECTIONS.contains(&section) {
+        return Err("unknown continuation section".into());
+    }
+    let full = complete_view(loaded, work_id)?;
+    let value = &full[section];
+    if let Some(index) = index {
+        let index = index
+            .parse::<usize>()
+            .map_err(|_| "invalid section index")?;
+        let item = value
+            .as_array()
+            .and_then(|items| items.get(index))
+            .ok_or("section item is unavailable")?;
+        let result = json!({"work":work_id,"goalRevision":full["goalRevision"],
+            "section":section,"index":index,"item":item,"readOnly":true});
+        if !bounded(&result)? {
+            return Err("section item exceeds 64 KiB".into());
+        }
+        return Ok(result);
+    }
+    let result = json!({"work":work_id,"goalRevision":full["goalRevision"],
+        "section":section,"value":value,"readOnly":true});
+    if bounded(&result)? {
+        return Ok(result);
+    }
+    let items = value.as_array().ok_or("section exceeds 64 KiB")?;
+    let routes = items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            json!({"index":index,"id":item["id"],"nativeChild":item["nativeChild"],
+                "resultSha256":item["resultSha256"],"command":["work","continuation",work_id,
+                "--section",section,"--index",index.to_string()]})
+        })
+        .collect::<Vec<_>>();
+    let summary = json!({"work":work_id,"goalRevision":full["goalRevision"],
+        "section":section,"count":items.len(),"requiresExpansion":true,
+        "items":routes,"readOnly":true});
+    if !bounded(&summary)? {
+        return Err("section index exceeds 64 KiB".into());
+    }
+    Ok(summary)
 }
