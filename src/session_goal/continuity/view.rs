@@ -122,7 +122,9 @@ fn complete_view(loaded: &Loaded, work_id: &str) -> Result<Value, String> {
             && result["requirements"]
                 .as_array()
                 .is_some_and(|xs| xs.iter().all(|x| x["unresolved"] == false))
-            && record["closure"]["closed"] == true
+            && crate::session_goal::presentation_for_loaded(loaded, Some(&record))?
+                ["explicitLeadClosure"]
+                == true
     );
     Ok(result)
 }
@@ -141,8 +143,7 @@ fn bounded(value: &Value) -> Result<bool, String> {
     Ok(serde_json::to_string_pretty(value)
         .map_err(|e| e.to_string())?
         .len()
-        + 1
-        <= 64 * 1024)
+        < 64 * 1024)
 }
 
 pub(crate) fn continuation_view(loaded: &Loaded, work_id: &str) -> Result<Value, String> {

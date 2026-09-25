@@ -537,6 +537,99 @@ fn missing_check_logs_invalidate_support_without_erasing_history() {
 }
 
 #[test]
+fn missing_accepted_result_artifact_invalidates_whole_goal_readiness() {
+    let f = Fixture::new("w2ch-missing-accepted-artifact");
+    f.ok(
+        json!({"action":"init","sourceRef":"fixture:one-requirement",
+        "sourceText":"First requirement.",
+        "requirements":[{"id":"first","text":"First requirement."}]}),
+    );
+    f.ok(
+        json!({"action":"bind","expectedRevision":1,"expectedBindingRevision":0,
+        "host":"codex","session":"s1","hostVersion":"0.156.1"}),
+    );
+    let source_sha = f.view()["source"]["sha256"].as_str().unwrap().to_owned();
+    f.ok(
+        json!({"action":"cover","expectedRevision":2,"bindingRevision":1,
+        "sourceSha256":source_sha}),
+    );
+    f.return_stage("scoped", "Bounded scope");
+    f.return_stage("completed", "A completed worker result");
+    assert!(f.call(&["work", "check", &f.work]).status.success());
+    let checked = f.call(&["work", "check", &f.work]);
+    assert!(checked.status.success(), "{checked:?}");
+    let event: Value = serde_json::from_slice(&checked.stdout).unwrap();
+    let conditions = f.view()["currentConditionsSha256"].clone();
+    f.ok(
+        json!({"action":"support","expectedRevision":3,"bindingRevision":1,
+        "requirementId":"first","requirementRevision":1,
+        "resultEventSha256":event["event"]["eventSha256"],
+        "conditionsSha256":conditions}),
+    );
+    let accepted = loop {
+        let next = f.call(&["work", "next", &f.work, "--full"]);
+        assert!(next.status.success(), "{next:?}");
+        let next: Value = serde_json::from_slice(&next.stdout).unwrap();
+        let stage = &next["next"];
+        if stage["outcomes"]
+            .as_array()
+            .is_some_and(|outcomes| outcomes.iter().any(|outcome| outcome == "accepted"))
+        {
+            break f.return_stage("accepted", "Accepted worker result");
+        }
+        match stage["action"].as_str().unwrap() {
+            "check" => assert!(f.call(&["work", "check", &f.work]).status.success()),
+            "spawn" if stage["role"] == "reviewer" => {
+                f.return_stage("approved", "Reviewed worker result");
+            }
+            other => panic!("unexpected stage before acceptance: {other} {stage}"),
+        }
+    };
+    let inspected = f.call(&[
+        "run",
+        "inspect",
+        &format!(
+            ".exitbind/runs/work-{}.jsonl",
+            f.work.strip_prefix("smw_").unwrap()
+        ),
+        "--event",
+        accepted["eventSha256"].as_str().unwrap(),
+    ]);
+    assert!(inspected.status.success(), "{inspected:?}");
+    let inspected: Value = serde_json::from_slice(&inspected.stdout).unwrap();
+    let artifact = inspected["event"]["artifact"]["path"].as_str().unwrap();
+    let incorporated = f.call(&[
+        "goal",
+        "incorporate",
+        "--goal-id",
+        &f.work,
+        "--goal",
+        "Finish two requirements on one work",
+        "--obligation",
+        "first",
+        "--disposition",
+        "accepted",
+        "--result-ref",
+        &f.work,
+    ]);
+    assert!(incorporated.status.success(), "{incorporated:?}");
+    let closed = f.call(&[
+        "goal",
+        "close",
+        "--goal-id",
+        &f.work,
+        "--result-ref",
+        &f.work,
+    ]);
+    assert!(closed.status.success(), "{closed:?}");
+    assert_eq!(f.view()["wholeGoalReady"], true);
+    let before = f.history();
+    fs::remove_file(f.root.join(artifact)).unwrap();
+    assert_eq!(f.view()["wholeGoalReady"], false);
+    assert_eq!(f.history(), before);
+}
+
+#[test]
 fn caller_reported_check_cannot_be_observed_requirement_support() {
     let f = Fixture::new("w2ch-reported-check");
     f.initialize();
