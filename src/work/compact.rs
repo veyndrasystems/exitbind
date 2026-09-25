@@ -32,6 +32,23 @@ pub(crate) fn project(
         copy_if_present(response, &mut result, key);
     }
     copy_if_present(response, &mut result, "work");
+    if let Some(continuation) = response.get("continuation") {
+        let bytes = serialized_len(continuation)?;
+        if bytes <= 2_500 {
+            result.insert("continuation".into(), continuation.clone());
+        } else {
+            result.insert(
+                "continuation".into(),
+                json!({
+                    "work": continuation["work"],
+                    "goalRevision": continuation["goalRevision"],
+                    "binding": continuation["binding"],
+                    "requiresExpansion": true,
+                    "command": ["work", "continuation", response["work"].as_str().unwrap_or("")],
+                }),
+            );
+        }
+    }
     if let Some(next) = response.get("next") {
         result.insert("next".into(), compact_next(next));
     }
