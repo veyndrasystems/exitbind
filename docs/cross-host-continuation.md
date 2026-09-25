@@ -86,6 +86,14 @@ marked `host_reported_native_child`: transporting bytes does not make it an
 independent review or a lead acceptance. The CLI accepts up to 8 KiB of child
 text in a 16 KiB input object; larger outputs need a separately assessed
 artifact path and cannot be silently shortened. The view is bounded at 64 KiB.
+Before recording a receiving host's child, bind that host's actual native
+session with `work record` using the current `goalRevision` and
+`binding.revision`; then refresh both revisions before the `child` record.
+Recording under the previous host's binding attributes the child to the wrong
+origin. Project guidance includes the two small JSON shapes, so the receiving
+agent need not reverse-engineer the mutation schema. Native identity remains
+host-reported, and an unavailable session ID must be reported rather than
+invented.
 When a complete view exceeds that bound, it returns section commands; an
 oversized section returns indexed item commands. For example,
 `work continuation WORK --section children --index 0` reads one exact result
