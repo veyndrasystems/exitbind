@@ -15,9 +15,14 @@ remaining requirements. It never launches or retries an operation. `work
 resume` includes the same view only when discovery finds exactly one current
 work item. An ambiguous resume still requires an explicit locator.
 
-The coordinating lead initializes the continuation once by piping a JSON
-object to `exitbind work record WORK`. `sourceText` retains the original
-request; every initial requirement must be a unique, exact excerpt of it.
+The coordinating lead initializes or attaches the continuation once by piping
+a JSON object to `exitbind work record WORK`. For an existing open canonical
+goal with the same work identity, include its current `expectedRevision`; an
+identical retry leaves history unchanged. A conflicting source or a closed goal
+is refused. For a successor work, explicitly incorporate that work as the
+current goal before attaching, preserving the predecessor's history.
+`sourceText` retains the original request; every initial requirement must be a
+unique, exact excerpt of it.
 Unrepresented source clauses remain a coverage question until a lead records
 an explicit `cover` assertion against the source hash. That assertion is
 `lead_asserted_review_required`, not semantic proof by itself.
@@ -42,10 +47,19 @@ bind is refused. Subsequent records require both `expectedRevision` and
 and retains its prior text. Existing support remains recorded but no longer
 applies to the new revision.
 
+`work record` returns a bounded mutation outcome with its revision, append
+effect and exact record identity. Follow its read-only `nextAction.command` to
+recover the bounded view; the command carries the originating executable and
+configuration when they fit. If either cannot fit, its corresponding
+`sameExecutableRequired` or `sameConfigRequired` flag requires that exact
+invocation context. Section, item and history routes use the same rule.
+
 `support` accepts only a passing observed check event from this exact work
 whose recorded `requirementId` matches the named requirement. It also binds
-the requirement revision, source hash, tested inputs, configuration and
-conditions hash. A refinement records the current check-event floor, so an
+the requirement revision, source hash, tested inputs, acquired configuration and
+conditions hash. A check without acquired configuration provenance cannot be
+attached as current support; a later caller's conditions hash cannot supply it.
+A refinement records the current check-event floor, so an
 older event cannot be attached to the new requirement revision. This floor
 orders events in the selected single-workspace path; it is not an atomic
 transaction across concurrent goal and run writers. `work continuation`

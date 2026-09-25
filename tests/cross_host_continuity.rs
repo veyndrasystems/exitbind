@@ -62,9 +62,13 @@ impl Fixture {
             .unwrap()
     }
     fn record(&self, value: Value) -> Output {
+        self.record_work(&self.work, value)
+    }
+
+    fn record_work(&self, work: &str, value: Value) -> Output {
         let mut child = Command::new(env!("CARGO_BIN_EXE_exitbind"))
             .current_dir(&self.root)
-            .args(["work", "record", &self.work, "--config", "exitbind.json"])
+            .args(["work", "record", work, "--config", "exitbind.json"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -140,6 +144,153 @@ fn sha(text: &str) -> String {
 }
 
 #[test]
+fn continuation_attaches_to_existing_goal_without_replacing_its_history() {
+    let f = Fixture::new("w2ch-existing-goal-attach");
+    let incorporated = f.call(&[
+        "goal",
+        "incorporate",
+        "--goal-id",
+        &f.work,
+        "--goal",
+        "Existing goal",
+        "--obligation",
+        "Existing obligation",
+    ]);
+    assert!(incorporated.status.success(), "{incorporated:?}");
+    let before = f.history();
+    let input = json!({"action":"init","expectedRevision":1,
+        "sourceRef":"fixture:requirements-v1",
+        "sourceText":"First requirement. Second requirement.",
+        "requirements":[{"id":"first","text":"First requirement."},
+            {"id":"second","text":"Second requirement."}]});
+    let attached = f.ok(input.clone());
+    assert_eq!(attached["goalRevision"], 2);
+    assert_eq!(attached["effect"], "appended");
+    let after = f.history();
+    assert!(after.starts_with(&before));
+    let status = f.call(&["goal", "status", "--json"]);
+    assert!(status.status.success(), "{status:?}");
+    let status: Value = serde_json::from_slice(&status.stdout).unwrap();
+    assert_eq!(status["obligations"][0]["id"], "Existing obligation");
+    assert_eq!(status["goal"], "Existing goal");
+    assert_eq!(f.ok(input.clone())["effect"], "unchanged");
+    assert_eq!(f.history(), after);
+    f.ok(
+        json!({"action":"bind","expectedRevision":2,"expectedBindingRevision":0,
+        "host":"codex","session":"same-work","hostVersion":"0.156.1"}),
+    );
+    f.ok(
+        json!({"action":"refine","expectedRevision":3,"bindingRevision":1,
+        "id":"first","text":"Refined first requirement.",
+        "sourceRef":"operator:refinement","expectedRequirementRevision":1}),
+    );
+    let refined = f.history();
+    assert_eq!(f.ok(input.clone())["effect"], "unchanged");
+    assert_eq!(f.history(), refined);
+    let mut conflict = input;
+    conflict["sourceRef"] = json!("fixture:conflict");
+    assert!(!f.record(conflict).status.success());
+    assert_eq!(f.history(), refined);
+}
+
+#[test]
+fn stale_attach_is_refused_before_a_goal_history_append() {
+    let f = Fixture::new("w2ch-stale-attach");
+    let incorporated = f.call(&[
+        "goal",
+        "incorporate",
+        "--goal-id",
+        &f.work,
+        "--goal",
+        "Existing goal",
+        "--obligation",
+        "Existing obligation",
+    ]);
+    assert!(incorporated.status.success(), "{incorporated:?}");
+    let before = f.history();
+    let refused = f.record(json!({"action":"init","expectedRevision":0,
+        "sourceRef":"fixture:requirements-v1","sourceText":"First requirement.",
+        "requirements":[{"id":"first","text":"First requirement."}]}));
+    assert!(!refused.status.success());
+    assert_eq!(f.history(), before);
+}
+
+#[test]
+fn closed_goal_cannot_be_reopened_by_continuation_init() {
+    let f = Fixture::new("w2ch-closed-attach");
+    let incorporated = f.call(&[
+        "goal",
+        "incorporate",
+        "--goal-id",
+        &f.work,
+        "--goal",
+        "Finished goal",
+        "--none-applicable",
+        "obligations,findings,blockers,decisions,externalActions",
+    ]);
+    assert!(incorporated.status.success(), "{incorporated:?}");
+    let closed = f.call(&["goal", "close", "--goal-id", &f.work, "--direct"]);
+    assert!(closed.status.success(), "{closed:?}");
+    let before = f.history();
+    let refused = f.record(json!({"action":"init","expectedRevision":2,
+        "sourceRef":"fixture:requirements-v1","sourceText":"First requirement.",
+        "requirements":[{"id":"first","text":"First requirement."}]}));
+    assert!(!refused.status.success());
+    assert_eq!(f.history(), before);
+}
+
+#[test]
+fn explicitly_incorporated_successor_keeps_predecessor_history() {
+    let f = Fixture::new("w2ch-attached-successor");
+    f.initialize();
+    let predecessor = f.history();
+    let started = f.call(&[
+        "work",
+        "begin",
+        "change",
+        "--goal",
+        "Successor work",
+        "--check-command",
+        "true",
+        "--review-policy",
+        "required",
+    ]);
+    assert!(started.status.success(), "{started:?}");
+    let successor: Value = serde_json::from_slice(&started.stdout).unwrap();
+    let work = successor["work"].as_str().unwrap();
+    let incorporated = f.call(&[
+        "goal",
+        "incorporate",
+        "--goal-id",
+        work,
+        "--goal",
+        "Successor work",
+        "--obligation",
+        "Successor obligation",
+    ]);
+    assert!(incorporated.status.success(), "{incorporated:?}");
+    let incorporated: Value = serde_json::from_slice(&incorporated.stdout).unwrap();
+    let revision = incorporated["revision"].as_u64().unwrap();
+    let attached = f.record_work(
+        work,
+        json!({"action":"init","expectedRevision":revision,
+        "sourceRef":"fixture:successor","sourceText":"Successor requirement.",
+        "requirements":[{"id":"successor","text":"Successor requirement."}]}),
+    );
+    assert!(attached.status.success(), "{attached:?}");
+    let after = f.history();
+    assert!(after.starts_with(&predecessor));
+    let viewed = f.call(&["work", "continuation", work]);
+    assert!(viewed.status.success(), "{viewed:?}");
+    let viewed: Value = serde_json::from_slice(&viewed.stdout).unwrap();
+    assert_eq!(viewed["work"], work);
+    assert_eq!(viewed["requirements"][0]["requirement"]["id"], "successor");
+    let first: Value =
+        serde_json::from_slice(predecessor.split(|byte| *byte == b'\n').next().unwrap()).unwrap();
+    assert_eq!(first["goalId"], f.work);
+}
+
+#[test]
 fn host_handoff_fences_stale_writers_and_preserves_uncertain_operations() {
     let f = Fixture::new("w2ch-binding");
     f.initialize();
@@ -164,13 +315,16 @@ fn host_handoff_fences_stale_writers_and_preserves_uncertain_operations() {
         json!({"action":"bind","expectedRevision":1,"expectedBindingRevision":0,
         "host":"codex","session":"codex-1","hostVersion":"0.156.1"}),
     );
-    assert_eq!(first["continuation"]["binding"]["revision"], 1);
+    assert_eq!(first["goalRevision"], 2);
+    assert_eq!(first["effect"], "appended");
+    assert_eq!(f.view()["binding"]["revision"], 1);
     let before = f.history();
     let duplicate = f.ok(
         json!({"action":"bind","expectedRevision":1,"expectedBindingRevision":0,
         "host":"codex","session":"codex-1","hostVersion":"0.156.1"}),
     );
-    assert_eq!(duplicate["revision"], 2);
+    assert_eq!(duplicate["goalRevision"], 2);
+    assert_eq!(duplicate["effect"], "unchanged");
     assert_eq!(f.history(), before);
     assert!(!f
         .record(
@@ -421,12 +575,82 @@ fn accumulated_children_keep_a_bounded_read_only_route() {
     );
     let text = "X".repeat(8192);
     for index in 0..8 {
-        f.ok(
+        let recorded = f.record(
             json!({"action":"child","expectedRevision":2+index,"bindingRevision":1,
             "assignment":"inspect","nativeChild":format!("child-{index}"),
             "resultText":text,"resultSha256":sha(&text)}),
         );
+        assert!(recorded.status.success(), "{recorded:?}");
+        assert!(
+            recorded.stdout.len() <= 8 * 1024,
+            "{}",
+            recorded.stdout.len()
+        );
     }
+    let corrected = f.record(json!({"action":"correct","expectedRevision":10,
+        "bindingRevision":1,"id":"one","text":"Keep the current correction.",
+        "scope":"task","sourceRef":"operator:current"}));
+    assert!(corrected.status.success(), "{corrected:?}");
+    assert!(
+        corrected.stdout.len() <= 8 * 1024,
+        "{}",
+        corrected.stdout.len()
+    );
+    let corrected: Value = serde_json::from_slice(&corrected.stdout).unwrap();
+    let argv = corrected["nextAction"]["command"].as_array().unwrap();
+    assert_eq!(corrected["nextAction"]["sameConfigRequired"], false);
+    assert_eq!(corrected["nextAction"]["sameExecutableRequired"], false);
+    let recovered = Command::new(argv[0].as_str().unwrap())
+        .args(argv[1..].iter().map(|part| part.as_str().unwrap()))
+        .current_dir(&f.root)
+        .output()
+        .unwrap();
+    assert!(recovered.status.success(), "{recovered:?}");
+    let recovered: Value = serde_json::from_slice(&recovered.stdout).unwrap();
+    assert_eq!(recovered["goalRevision"], 11);
+    fs::copy(f.root.join("exitbind.json"), f.root.join("alternate.json")).unwrap();
+    let entry = Command::new(env!("CARGO_BIN_EXE_exitbind"))
+        .current_dir(&f.root)
+        .args(["work", "next", &f.work, "--config", "alternate.json"])
+        .output()
+        .unwrap();
+    assert!(entry.status.success(), "{entry:?}");
+    let entry: Value = serde_json::from_slice(&entry.stdout).unwrap();
+    let route = &entry["continuation"];
+    assert_eq!(route["requiresExpansion"], true);
+    assert_eq!(route["sameConfigRequired"], false);
+    assert_eq!(route["sameExecutableRequired"], false);
+    let argv = route["command"].as_array().unwrap();
+    let expanded = Command::new(argv[0].as_str().unwrap())
+        .args(argv[1..].iter().map(|part| part.as_str().unwrap()))
+        .current_dir(&f.root)
+        .output()
+        .unwrap();
+    assert!(expanded.status.success(), "{expanded:?}");
+    let expanded: Value = serde_json::from_slice(&expanded.stdout).unwrap();
+    let children = expanded["sections"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|section| section["name"] == "children")
+        .unwrap();
+    let argv = children["command"].as_array().unwrap();
+    let section = Command::new(argv[0].as_str().unwrap())
+        .args(argv[1..].iter().map(|part| part.as_str().unwrap()))
+        .current_dir(&f.root)
+        .output()
+        .unwrap();
+    assert!(section.status.success(), "{section:?}");
+    let section: Value = serde_json::from_slice(&section.stdout).unwrap();
+    let argv = section["items"][7]["command"].as_array().unwrap();
+    let item = Command::new(argv[0].as_str().unwrap())
+        .args(argv[1..].iter().map(|part| part.as_str().unwrap()))
+        .current_dir(&f.root)
+        .output()
+        .unwrap();
+    assert!(item.status.success(), "{item:?}");
+    let item: Value = serde_json::from_slice(&item.stdout).unwrap();
+    assert_eq!(item["item"]["resultText"], text);
     let view = f.view();
     assert_eq!(view["requiresExpansion"], true);
     assert_eq!(view["sections"].as_array().unwrap().len(), 7);
@@ -761,4 +985,45 @@ fn long_requirement_history_has_bounded_exact_read_and_refinement_limit() {
     let history: Value = serde_json::from_slice(&history.stdout).unwrap();
     assert_eq!(history["historyEntry"]["text"], prior_text);
     assert_eq!(history["historyIndex"], 0);
+    fs::copy(f.root.join("exitbind.json"), f.root.join("alternate.json")).unwrap();
+    let alternate = Command::new(env!("CARGO_BIN_EXE_exitbind"))
+        .current_dir(&f.root)
+        .args([
+            "work",
+            "continuation",
+            &f.work,
+            "--section",
+            "requirements",
+            "--index",
+            "0",
+            "--config",
+            "alternate.json",
+        ])
+        .output()
+        .unwrap();
+    assert!(alternate.status.success(), "{alternate:?}");
+    let alternate: Value = serde_json::from_slice(&alternate.stdout).unwrap();
+    assert_eq!(alternate["historyReadSameConfigRequired"], false);
+    assert_eq!(alternate["historyReadSameExecutableRequired"], false);
+    let argv = alternate["historyRead"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|part| {
+            if part == "N" {
+                "0"
+            } else {
+                part.as_str().unwrap()
+            }
+        })
+        .collect::<Vec<_>>();
+    let read = Command::new(argv[0])
+        .args(&argv[1..])
+        .current_dir(&f.root)
+        .output()
+        .unwrap();
+    assert!(read.status.success(), "{read:?}");
+    let read: Value = serde_json::from_slice(&read.stdout).unwrap();
+    assert_eq!(read["historyEntry"]["text"], prior_text);
+    assert_eq!(f.history(), before);
 }

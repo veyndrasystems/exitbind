@@ -333,7 +333,10 @@ fn apply(loaded: &Loaded, work_id: &str, previous: &Value, input: &Value) -> Res
                 return Err("check evidence is missing or unverified".into());
             }
             let (current_inputs, current_conditions) = current_conditions(loaded)?;
-            if result["inputsSha256"] != current_inputs || conditions != current_conditions {
+            if result["inputsSha256"] != current_inputs
+                || conditions != current_conditions
+                || !acquired_config_current(loaded, result)
+            {
                 return Err("check or support conditions no longer match current inputs".into());
             }
             let supports = record["continuation"]["supports"]
@@ -351,6 +354,7 @@ fn apply(loaded: &Loaded, work_id: &str, previous: &Value, input: &Value) -> Res
             supports.push(json!({"type":"supports","requirementId":id,"requirementRevision":wanted,
                 "sourceSha256":requirement["sourceSha256"],"resultEventSha256":event,"subjectSha256":result["subjectSha256"],
                 "inputsSha256":result["inputsSha256"],"conditionsSha256":conditions,
+                "acquiredConfigSha256":result["configSha256"],
                 "acquisition":result["acquisition"],"producer":result["producer"],"sourceClass":"observed_check"}));
         }
         "diagnose" => {
@@ -479,11 +483,18 @@ pub(crate) fn continuation_record(loaded: &Loaded, work_id: &str) -> Result<Valu
     }
     let input: Value =
         serde_json::from_slice(&bytes).map_err(|_| "continuation input is not JSON".to_owned())?;
-    if input["action"] == "init" {
-        return init(loaded, work_id, &input);
-    }
-    mutate(&loaded.state_root, |previous| {
-        let previous = previous.ok_or("continuation has not been initialized")?;
-        apply(loaded, work_id, previous, &input)
-    })
+    let action = field(&input, "action", 32)?;
+    let (record, appended) = if action == "init" {
+        init(loaded, work_id, &input)?
+    } else {
+        let mut appended = true;
+        let record = mutate(&loaded.state_root, |previous| {
+            let previous = previous.ok_or("continuation has not been initialized")?;
+            let record = apply(loaded, work_id, previous, &input)?;
+            appended = &record != previous;
+            Ok(record)
+        })?;
+        (record, appended)
+    };
+    crate::work::compact::continuation_mutation(&record, work_id, action, appended, &loaded.path)
 }

@@ -66,6 +66,14 @@ owner's selected choice.
 valid, and what must not be repeated. Follow that returned action; do not ask
 the user for work handles, ledger paths, or event hashes.
 
+When a receiving task agent is given an explicit `smw_…` work locator in a
+configured project, run `exitbind work next WORK` first. Read its `continuation`
+view for current requirements, corrections, results and uncertain operations;
+if it says `requiresExpansion`, follow the emitted `work continuation` read
+route. Use the same executable and configuration indicated by each route.
+Do not search raw state files to reconstruct the handoff or retry an uncertain
+effect just because its native process is absent.
+
 If the repository is not configured yet, `exitbind work` reports that. Explain
 the single project write it needs and ask the owner before running:
 

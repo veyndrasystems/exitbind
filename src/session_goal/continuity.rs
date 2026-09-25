@@ -75,6 +75,36 @@ fn current_conditions(loaded: &Loaded) -> Result<(String, String), String> {
     Ok((inputs, conditions))
 }
 
+fn acquired_config_current(loaded: &Loaded, event: &Value) -> bool {
+    event["configSha256"] == hash::text(&loaded.source)
+}
+
+fn same_intake(existing: &Value, proposed: &Value) -> bool {
+    if existing["work"] != proposed["work"]
+        || existing["source"]["ref"] != proposed["source"]["ref"]
+        || existing["source"]["sha256"] != proposed["source"]["sha256"]
+        || existing["source"]["text"] != proposed["source"]["text"]
+    {
+        return false;
+    }
+    let (Some(current), Some(initial)) = (
+        existing["requirements"].as_array(),
+        proposed["requirements"].as_array(),
+    ) else {
+        return false;
+    };
+    current.len() == initial.len()
+        && current.iter().zip(initial).all(|(current, initial)| {
+            current["id"] == initial["id"]
+                && current["sourceSha256"] == initial["sourceSha256"]
+                && current["history"]
+                    .as_array()
+                    .and_then(|history| history.first())
+                    .map_or(&current["text"], |first| &first["text"])
+                    == &initial["text"]
+        })
+}
+
 fn base_record(work_id: &str, goal: &str, continuation: Value) -> Value {
     let obligations = continuation["requirements"]
         .as_array()
@@ -97,10 +127,16 @@ fn base_record(work_id: &str, goal: &str, continuation: Value) -> Value {
     })
 }
 
-fn init(loaded: &Loaded, work_id: &str, input: &Value) -> Result<Value, String> {
+fn init(loaded: &Loaded, work_id: &str, input: &Value) -> Result<(Value, bool), String> {
     shape(
         input,
-        &["action", "sourceText", "sourceRef", "requirements"],
+        &[
+            "action",
+            "sourceText",
+            "sourceRef",
+            "requirements",
+            "expectedRevision",
+        ],
     )?;
     let ledger = verify_work(loaded, work_id)?;
     let source = field(input, "sourceText", MAX_SOURCE)?;
@@ -126,14 +162,46 @@ fn init(loaded: &Loaded, work_id: &str, input: &Value) -> Result<Value, String> 
         "requirements":normalized,"supports":[],"corrections":[],"operations":[],"diagnoses":[],"children":[],
         "binding":null,
     });
-    mutate(&loaded.state_root, |previous| {
-        if previous.is_some() {
+    let mut appended = true;
+    let record = mutate(&loaded.state_root, |previous| {
+        let Some(previous) = previous else {
+            if input.get("expectedRevision").is_some() && revision(input, "expectedRevision")? != 0
+            {
+                return Err("stale canonical goal revision".into());
+            }
+            return Ok(sealed(base_record(work_id, goal, continuation), None));
+        };
+        if previous["goalId"] != work_id {
             return Err(
-                "canonical session goal already exists; explicit supersession is required".into(),
+                "current canonical goal belongs to another work; incorporate the successor first"
+                    .into(),
             );
         }
-        Ok(sealed(base_record(work_id, goal, continuation), None))
-    })
+        if previous["closure"]["closed"] == true {
+            return Err("closed canonical goal cannot be reopened".into());
+        }
+        if !previous["continuation"].is_null() {
+            if same_intake(&previous["continuation"], &continuation) {
+                appended = false;
+                return Ok(previous.clone());
+            }
+            return Err("continuation already initialized with a different source or work".into());
+        }
+        if revision(input, "expectedRevision")? != previous["revision"].as_u64().unwrap_or(0) {
+            return Err("stale canonical goal revision".into());
+        }
+        let mut record = previous.clone();
+        record
+            .as_object_mut()
+            .ok_or("goal record malformed")?
+            .remove("eventSha256");
+        record["revision"] = json!(revision(previous, "revision")? + 1);
+        record["predecessor"] = json!({"goalId":work_id,"revision":previous["revision"]});
+        record["successorOf"] = Value::Null;
+        record["continuation"] = continuation;
+        Ok(sealed(record, Some(previous)))
+    })?;
+    Ok((record, appended))
 }
 
 mod record;

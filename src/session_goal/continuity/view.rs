@@ -2,6 +2,12 @@
 
 use super::*;
 
+fn route(loaded: &Loaded, work_id: &str, tail: Vec<String>) -> Value {
+    let mut suffix = vec!["work".into(), "continuation".into(), work_id.into()];
+    suffix.extend(tail);
+    crate::work::compact::continuation_route(&loaded.path, suffix)
+}
+
 pub(crate) fn has_unresolved(record: &Value) -> bool {
     let c = &record["continuation"];
     if c.is_null() {
@@ -59,6 +65,7 @@ pub(crate) fn support_current(loaded: &Loaded, record: &Value) -> Result<bool, S
             if let Some(event) = support["resultEventSha256"].as_str() {
                 if run::inspect_event(loaded, &ledger, event).is_ok_and(|found| {
                     evidence_verified(&found)
+                        && acquired_config_current(loaded, &found["event"])
                         && found["eventIndex"].as_u64().unwrap_or(0)
                             >= requirement["checkFloorIndex"].as_u64().unwrap_or(0)
                 }) {
@@ -97,16 +104,21 @@ fn complete_view(loaded: &Loaded, work_id: &str) -> Result<Value, String> {
             let event = support["resultEventSha256"].as_str().unwrap_or_default();
             let found = run::inspect_event(loaded, &ledger, event);
             let current = found.as_ref().is_ok_and(evidence_verified);
+            let acquired_conditions_current = found
+                .as_ref()
+                .is_ok_and(|found| acquired_config_current(loaded, &found["event"]));
             let revision_current = found.as_ref().is_ok_and(|found| {
                 found["eventIndex"].as_u64().unwrap_or(0)
                     >= requirement["checkFloorIndex"].as_u64().unwrap_or(0)
             });
             let applicable = current
+                && acquired_conditions_current
                 && revision_current
                 && support["inputsSha256"] == current_inputs
                 && support["conditionsSha256"] == current_conditions;
             valid.push(
-                json!({"relation":support,"integrityCurrent":current,"revisionCurrent":revision_current,"applicableCurrent":applicable,
+                json!({"relation":support,"integrityCurrent":current,"acquiredConditionsCurrent":acquired_conditions_current,
+                "revisionCurrent":revision_current,"applicableCurrent":applicable,
                 "exactRead":{"command":"run inspect","ledger":ledger,"event":event}}),
             );
         }
@@ -153,7 +165,12 @@ pub(crate) fn continuation_view(loaded: &Loaded, work_id: &str) -> Result<Value,
     }
     let sections = SECTIONS
         .iter()
-        .map(|name| json!({"name":name,"command":["work","continuation",work_id,"--section",name]}))
+        .map(|name| {
+            let route = route(loaded, work_id, vec!["--section".into(), (*name).into()]);
+            json!({"name":name,"command":route["command"],
+                "sameConfigRequired":route["sameConfigRequired"],
+                "sameExecutableRequired":route["sameExecutableRequired"]})
+        })
         .collect::<Vec<_>>();
     Ok(
         json!({"work":work_id,"goalRevision":full["goalRevision"],"binding":full["binding"],
@@ -212,11 +229,24 @@ pub(crate) fn continuation_section(
             .ok_or("oversized requirement has no history")?;
         let mut compact_item = item.clone();
         compact_item["requirement"]["history"] = Value::Null;
+        let history_route = route(
+            loaded,
+            work_id,
+            vec![
+                "--section".into(),
+                "requirements".into(),
+                "--index".into(),
+                index.to_string(),
+                "--history-index".into(),
+                "N".into(),
+            ],
+        );
         let summary = json!({"work":work_id,"goalRevision":full["goalRevision"],
             "section":section,"index":index,"item":compact_item,
             "historyCount":history.len(),
-            "historyRead":["work","continuation",work_id,"--section","requirements",
-                "--index",index.to_string(),"--history-index","N"],
+            "historyRead":history_route["command"],
+            "historyReadSameConfigRequired":history_route["sameConfigRequired"],
+            "historyReadSameExecutableRequired":history_route["sameExecutableRequired"],
             "requiresExpansion":true,"readOnly":true});
         if !bounded(&summary)? {
             return Err("requirement item exceeds 64 KiB after history expansion".into());
@@ -236,9 +266,20 @@ pub(crate) fn continuation_section(
         .iter()
         .enumerate()
         .map(|(index, item)| {
+            let route = route(
+                loaded,
+                work_id,
+                vec![
+                    "--section".into(),
+                    section.into(),
+                    "--index".into(),
+                    index.to_string(),
+                ],
+            );
             json!({"index":index,"id":item["id"],"nativeChild":item["nativeChild"],
-                "resultSha256":item["resultSha256"],"command":["work","continuation",work_id,
-                "--section",section,"--index",index.to_string()]})
+                "resultSha256":item["resultSha256"],"command":route["command"],
+                "sameConfigRequired":route["sameConfigRequired"],
+                "sameExecutableRequired":route["sameExecutableRequired"]})
         })
         .collect::<Vec<_>>();
     let summary = json!({"work":work_id,"goalRevision":full["goalRevision"],
