@@ -1,7 +1,10 @@
 # Continue one work item across Codex and Claude Code
 
-Exitbind keeps the portable work identity in the existing run and canonical
-session-goal histories. Native sessions and children remain in their own hosts.
+Small reversible work stays direct; the protocol surfaces only for material or
+promotion-required work, resuming governed work, or explicit cross-host
+continuation. Exitbind keeps the portable work identity in the existing run
+and canonical session-goal histories. Native sessions and children remain in
+their own hosts.
 This local-workspace path assumes the same authorized operating-system
 principal on both hosts; a host name supplied to the CLI is an observation, not
 an authentication credential.
