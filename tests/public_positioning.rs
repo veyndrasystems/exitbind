@@ -19,7 +19,7 @@ const RESEARCH_HOSTS: &[&str] = &[
     "semanticscholar.org",
 ];
 const README_LINK_PREFIXES: &[&str] = &[
-    "https://github.com/veyndrasystems/exitbind",
+    "https://github.com/veyndrasystems/exitbind/",
     "https://raw.githubusercontent.com/veyndrasystems/exitbind/",
     "https://img.shields.io/",
 ];
@@ -57,9 +57,10 @@ fn readme_links_only_exitbind_owned_or_badge_locations() {
     let text = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md")).unwrap();
     for link in links(&text) {
         assert!(
-            README_LINK_PREFIXES
-                .iter()
-                .any(|prefix| link.starts_with(prefix)),
+            link == "https://github.com/veyndrasystems/exitbind"
+                || README_LINK_PREFIXES
+                    .iter()
+                    .any(|prefix| link.starts_with(prefix)),
             "README links outside Exitbind: {link}"
         );
     }
