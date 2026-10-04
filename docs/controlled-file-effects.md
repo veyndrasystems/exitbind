@@ -5,6 +5,10 @@ selects an explicit, fresh Codex session with a read-only project surface and
 one assignment-bound stdio MCP file tool. The Lead still decides scope and
 whether to issue the ordinary mutation permit. The tool enforces that authority
 at the existing file-effect owner.
+Before launch, the host obtains `allowed:true` through the current worker's
+`work permit` route. Controlled launch verifies that existing unconsumed permit
+and carries its grant-event identity to the worker. It issues no permit itself.
+The file tool checks current authority again at admission.
 
 | Host and path | UTF-8 replacement capability |
 | --- | --- |

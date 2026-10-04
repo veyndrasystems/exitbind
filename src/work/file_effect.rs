@@ -126,18 +126,7 @@ pub(super) fn replace_locked(
     // A permit is cooperative authority, never a caller-supplied token.
     // Its canonical grant must belong to this current assignment and remain
     // unconsumed; no earlier Work or completed attempt can supply it.
-    let grant = &state["governor"]["currentMutation"];
-    if state["governor"]["enabled"] != true
-        || state["governor"]["state"] != "ready"
-        || grant["attempt"] != assignment["attempt"]
-        || !events.iter().any(|event| {
-            event["governorEvent"]["eventSha256"] == grant["eventSha256"]
-                && event["assignmentSha256"] == hash::text(request.assignment)
-                && event["governorEvent"]["action"] == "mutation"
-        })
-    {
-        return Err("file effect needs a current unconsumed worker mutation permit".into());
-    }
+    let grant = current_grant(&state, &events, &assignment, request.assignment)?;
     let expected = match path::secure_bytes_observation(&root, request.path, "file effect target") {
         path::SecureBytesResult::Absent(_) if request.expected == "absent" => None,
         path::SecureBytesResult::Bytes(bytes) if hash::bytes(&bytes) == request.expected => {
@@ -177,6 +166,27 @@ pub(super) fn replace_locked(
         &loaded.state_root,
     )?;
     Ok(result(&request, &parameters, false))
+}
+
+pub(super) fn current_grant<'a>(
+    state: &'a Value,
+    events: &[Value],
+    assignment: &Value,
+    handle: &str,
+) -> Result<&'a Value, String> {
+    let grant = &state["governor"]["currentMutation"];
+    if state["governor"]["enabled"] != true
+        || state["governor"]["state"] != "ready"
+        || grant["attempt"] != assignment["attempt"]
+        || !events.iter().any(|event| {
+            event["governorEvent"]["eventSha256"] == grant["eventSha256"]
+                && event["assignmentSha256"] == hash::text(handle)
+                && event["governorEvent"]["action"] == "mutation"
+        })
+    {
+        return Err("file effect needs a current unconsumed worker mutation permit".into());
+    }
+    Ok(grant)
 }
 
 fn owner_binding(loaded: &Loaded) -> Result<String, String> {

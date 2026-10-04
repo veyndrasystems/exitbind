@@ -262,6 +262,25 @@ fn controlled_option_refuses_other_versions_project_config_and_capability_overri
     let override_attempt = invoke(&["--sandbox-mode", "workspace-write"]);
     assert!(!override_attempt.status.success());
     assert!(String::from_utf8_lossy(&override_attempt.stderr).contains("sandbox overrides"));
+    let no_permit = invoke(&[]);
+    assert!(!no_permit.status.success());
+    assert!(
+        String::from_utf8_lossy(&no_permit.stderr)
+            .contains("host-issued current worker mutation permit"),
+        "{no_permit:?}"
+    );
+    assert!(!f.root.join("provider-started").exists());
+    f.ok(
+        &[
+            "work",
+            "permit",
+            &f.work,
+            &f.worker,
+            "--operation",
+            "fixture",
+        ],
+        b"",
+    );
     let old = invoke(&[]);
     assert!(!old.status.success());
     if !cfg!(target_os = "linux") {

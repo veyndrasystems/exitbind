@@ -8,6 +8,28 @@ use state::{Baseline, Binding, Reads, Status, Submission};
 use std::{collections::BTreeMap, io::Read};
 pub(crate) use transport::serve;
 
+/// Read-only host preflight. This issues no permit and grants no effect.
+pub(crate) fn controlled_permit(
+    loaded: &Loaded,
+    work: &str,
+    assignment: &str,
+) -> Result<String, String> {
+    let binding = state::binding(loaded, work, assignment)?;
+    let ledger = super::resolve(loaded, work)?;
+    let lock = run::ledger::ledger_path(&loaded.state_root, &ledger, false)?;
+    run::ledger::with_lock(&lock, || {
+        let selected = current_worker(loaded, &binding, &lock)?;
+        let (_, events, _) = run::ledger::load_at(loaded, &lock)?;
+        let state = run::reduce_live(loaded, &events)?;
+        let grant = file_effect::current_grant(&state, &events, &selected, assignment)
+            .map_err(|_| "controlled launch requires a host-issued current worker mutation permit; obtain allowed:true outside the read-only worker before launch".to_owned())?;
+        Ok(grant["eventSha256"]
+            .as_str()
+            .ok_or("current permit has no event identity")?
+            .into())
+    })
+}
+
 pub(crate) fn prepare(loaded: &Loaded, work: &str, assignment: &str) -> Result<Value, String> {
     let binding = state::binding(loaded, work, assignment)?;
     let session = hash::value(&json!([work, assignment]));
