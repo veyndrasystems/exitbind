@@ -92,8 +92,12 @@ impl Fixture {
         serde_json::from_slice(&out.stdout).unwrap()
     }
     fn mcp(&self, args: &[Value]) -> Vec<Value> {
-        let input = args.iter().map(|a| format!("{}\n", json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"file","arguments":a}}))).collect::<String>();
-        let out = self.call(&["work", "file-serve", &self.session], input.as_bytes());
+        let mut input = Vec::new();
+        for a in args {
+            serde_json::to_writer(&mut input, &json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"file","arguments":a}})).unwrap();
+            input.push(b'\n');
+        }
+        let out = self.call(&["work", "file-serve", &self.session], &input);
         assert!(out.status.success(), "{out:?}");
         String::from_utf8(out.stdout)
             .unwrap()
@@ -142,8 +146,8 @@ fn host_bound_transport_requires_current_grant_and_strict_parameters() {
     ]);
     assert!(results[1].get("error").is_some());
     assert!(results[2].get("error").is_some());
-    for i in 3..6 {
-        assert_eq!(results[i]["result"]["isError"], true);
+    for item in &results[3..6] {
+        assert_eq!(item["result"]["isError"], true);
     }
     assert_eq!(results[6]["result"]["isError"], false);
     assert_eq!(

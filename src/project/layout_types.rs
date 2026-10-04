@@ -420,32 +420,7 @@ fn bound_directory(binding: &Value, field: &str) -> Result<PathBuf, String> {
 }
 
 fn binding_directory(create: bool) -> Result<PathBuf, String> {
-    let base = if exitbind_surface() {
-        std::env::var_os("EXITBIND_BINDINGS_DIR")
-            .or_else(|| std::env::var_os("SOULMATE_BINDINGS_DIR"))
-    } else {
-        std::env::var_os("SOULMATE_BINDINGS_DIR")
-    }
-    .map(PathBuf::from)
-    .or_else(|| {
-        std::env::var_os("XDG_STATE_HOME").map(|value| {
-            PathBuf::from(value).join(if exitbind_surface() {
-                "exitbind/bindings"
-            } else {
-                "soulmate/bindings"
-            })
-        })
-    })
-    .or_else(|| {
-        std::env::var_os("HOME").map(|value| {
-            PathBuf::from(value).join(if exitbind_surface() {
-                ".local/state/exitbind/bindings"
-            } else {
-                ".local/state/soulmate/bindings"
-            })
-        })
-    })
-    .ok_or("cannot determine machine-local binding directory")?;
+    let base = super::binding_location::select()?;
     if !base.is_absolute() {
         return Err("machine-local binding directory must be absolute".into());
     }

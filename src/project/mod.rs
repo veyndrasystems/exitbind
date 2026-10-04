@@ -1,4 +1,5 @@
 pub(crate) mod agent_context;
+mod binding_location;
 pub(crate) mod commands;
 pub(crate) mod context;
 pub(crate) mod git_preflight;

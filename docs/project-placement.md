@@ -11,11 +11,14 @@ It creates private owned control and state directories under `XDG_STATE_HOME`,
 then the ordinary user state directory if the preferred location is unavailable.
 It records one existing local-project binding and a deterministic source-based
 project ID. State/runtime placement never changes that identity.
+An existing fallback binding registry remains authoritative when the preferred
+state location becomes writable later. Multiple existing registries require an
+explicit authoritative registry choice; bootstrap never silently merges them.
 
 The existing explicit local mode and its `--project-id`, `--control-root` and
 `--state-root` choices remain available. Explicit automatic roots take precedence.
 Portable mode keeps its existing project-local layout. Automatic bootstrap refuses
-an already-configured portable source instead of forking its authority or moving
+an already-configured source instead of forking its authority or moving
 existing ledgers. Inspect its current configuration before selecting a migration.
 
 `exitbind project context --json` discovers the same configuration from nested

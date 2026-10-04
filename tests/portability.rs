@@ -111,6 +111,56 @@ fn readonly_source_bootstraps_without_surgery_and_nested_context_has_one_identit
 }
 
 #[test]
+fn readonly_xdg_uses_home_registry_and_keeps_it_after_xdg_becomes_writable() {
+    let f = Fixture::new();
+    let call = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_exitbind"))
+            .current_dir(f.source.join("nested"))
+            .args(args)
+            .env("XDG_STATE_HOME", &f.state)
+            .env("HOME", &f.base)
+            .env_remove("EXITBIND_BINDINGS_DIR")
+            .env_remove("SOULMATE_BINDINGS_DIR")
+            .output()
+            .unwrap()
+    };
+    fs::set_permissions(&f.source, fs::Permissions::from_mode(0o555)).unwrap();
+    fs::set_permissions(&f.state, fs::Permissions::from_mode(0o500)).unwrap();
+    let out = call(&[
+        "init",
+        "--mode",
+        "auto",
+        "--skip-skills",
+        "--root",
+        f.source.to_str().unwrap(),
+    ]);
+    assert!(out.status.success(), "{out:?}");
+    let first = call(&["project", "context", "--json"]);
+    assert!(first.status.success(), "{first:?}");
+    fs::set_permissions(&f.state, fs::Permissions::from_mode(0o700)).unwrap();
+    let later = call(&["project", "context", "--json"]);
+    assert!(later.status.success(), "{later:?}");
+    let first: Value = serde_json::from_slice(&first.stdout).unwrap();
+    let later: Value = serde_json::from_slice(&later.stdout).unwrap();
+    assert_eq!(first["project"], later["project"]);
+    assert_eq!(
+        first["placement"]["stateRoot"],
+        later["placement"]["stateRoot"]
+    );
+    assert!(!f.state.join("exitbind/bindings").exists());
+    let repeated = call(&[
+        "init",
+        "--mode",
+        "auto",
+        "--skip-skills",
+        "--root",
+        f.source.to_str().unwrap(),
+    ]);
+    assert!(!repeated.status.success());
+    assert!(String::from_utf8_lossy(&repeated.stderr).contains("already configured"));
+}
+
+#[test]
 fn readonly_preferred_state_automatically_uses_external_owned_storage() {
     let f = Fixture::new();
     let preferred = f.source.join(".exitbind");

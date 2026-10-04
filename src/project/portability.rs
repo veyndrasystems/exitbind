@@ -62,10 +62,11 @@ pub(crate) fn automatic(
     state: Option<&str>,
     id: Option<&str>,
 ) -> Result<Roots, String> {
-    if product
-        .join(crate::compatibility::profile().config)
-        .symlink_metadata()
-        .is_ok()
+    if layout_types::config_for_product(product)?.is_some()
+        || product
+            .join(crate::compatibility::profile().config)
+            .symlink_metadata()
+            .is_ok()
     {
         return Err("project already configured; inspect its existing context and roots, do not fork its authority with automatic bootstrap".into());
     }
