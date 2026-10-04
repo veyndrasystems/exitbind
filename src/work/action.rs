@@ -20,6 +20,7 @@ pub(crate) struct ActOptions<'a> {
     pub(crate) resume: bool,
     pub(crate) operation: Option<&'a str>,
     pub(crate) inspect: bool,
+    pub(crate) controlled_effects: bool,
 }
 
 pub(crate) fn act(loaded: &Loaded, work: &str, options: ActOptions<'_>) -> Result<Value, String> {
@@ -35,6 +36,7 @@ pub(crate) fn act(loaded: &Loaded, work: &str, options: ActOptions<'_>) -> Resul
             || options.reasoning_effort.is_some()
             || options.sandbox_mode.is_some()
             || options.timeout_ms.is_some()
+            || options.controlled_effects
         {
             return Err("--inspect is read-only and takes no execution or decision options".into());
         }
@@ -42,6 +44,13 @@ pub(crate) fn act(loaded: &Loaded, work: &str, options: ActOptions<'_>) -> Resul
             return Err("--inspect requires a current native assignment".into());
         }
         return native_action::inspect(loaded, work, &current);
+    }
+    if options.controlled_effects
+        && (options.resume || current["action"] != "spawn" || current["role"] != "worker")
+    {
+        return Err(
+            "--controlled-effects requires a fresh current native worker assignment".into(),
+        );
     }
     if options.operation.is_some() && !options.resume {
         return Err("--operation requires --resume".into());
@@ -131,6 +140,7 @@ fn native_assignment(
             sandbox_mode: options.sandbox_mode,
             timeout_ms: options.timeout_ms,
             resume: options.resume,
+            controlled_effects: options.controlled_effects,
         },
     )
 }

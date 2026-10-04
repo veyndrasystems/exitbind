@@ -7,7 +7,7 @@ pub(super) fn scoped_help(command: &str, positional: &[String]) -> Option<String
             "work next WORK | work detail WORK | work continuation WORK | work resume [--history] | work focus WORK | work bind WORK ... | work child WORK ASSIGNMENT ... | work record WORK < JSON | work validate WORK --packet FILE | work expand WORK REFERENCE"
         }
         ["work", "begin"] => "work begin WORKFLOW --goal GOAL --check-command COMMAND [--review-policy required|omitted] [--basis JSON] (basis is a versioned JSON object; current actions provide exact argv)",
-        ["work", "act"] => "work act WORK [--inspect] [--resume [--operation ASSIGNMENT]] [--model MODEL] [--reasoning-effort EFFORT]",
+        ["work", "act"] => "work act WORK [--inspect] [--resume [--operation ASSIGNMENT]] [--model MODEL] [--reasoning-effort EFFORT] [--controlled-effects]",
         ["work", "next"] => "work next WORK [--json] [--full]",
         ["work", "continuation"] => {
             "work continuation WORK [--json] [--section NAME [--index N [--history-index N]]] [--config CONFIG]"
@@ -43,6 +43,7 @@ pub(super) fn scoped_help(command: &str, positional: &[String]) -> Option<String
         }
         ["work", "check"] => "work check WORK",
         ["work", "usage"] => "work usage WORK [--json] [--config CONFIG] | work usage WORK --apply [--json] [--config CONFIG] < NUMERIC_JSON",
+        ["work", "file-serve"] => "work file-serve SESSION --config CONFIG (host-owned stdio MCP transport)",
         ["work", "file"] => "work file prepare WORK ASSIGNMENT | work file read|refresh|edit|inspect SESSION PATH (native workers receive a bound edit tool)",
         ["work", "validate"] => "work validate WORK --packet FILE [--json]",
         ["work", "expand"] => "work expand WORK REFERENCE [--json]",

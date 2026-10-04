@@ -29,7 +29,9 @@ These additions extend the existing Work path. Start with `work next WORK`
 for the bounded current view. Follow `current.details.grouped` for one
 product-owned readable assignment/evidence/tasks delivery, or use the three
 section routes when an expert needs legacy paging, and follow the returned assignment
-with `work act WORK`. Checks, independent review and explicit Lead acceptance
+with `work act WORK`. For the optional enforced Linux file cell, see
+[controlled file effects](controlled-file-effects.md); ordinary workspace-write
+remains mediated/advisory. Checks, independent review and explicit Lead acceptance
 still have their own results. Normal `work act`, `work check`, and `work
 return` executions emit the same product-owned goal line on bounded stderr;
 `--json` keeps stdout machine-only while retaining that bounded human channel

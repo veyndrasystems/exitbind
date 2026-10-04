@@ -24,6 +24,11 @@ pub(super) fn work_command(l: &config::Loaded, a: &Arguments) -> Result<(), Stri
         "work requires begin, next, detail, act, bind, child, permit, replan, evidence, sensor-request, sensor-result, return, disposition, check, validate, expand, or resume",
     )?;
     match action {
+        "file-serve" => {
+            args::assert_options("work file-serve", a, &["config"])?;
+            args::assert_positionals("work file-serve", a, 2)?;
+            crate::work::managed_edit::serve(l, positional(a, 1, "work file-serve requires SESSION")?)
+        }
         "file" => {
             args::assert_options("work file", a, &["config", "json"])?;
             args::assert_positionals("work file", a, 4)?;
@@ -295,6 +300,7 @@ pub(super) fn work_command(l: &config::Loaded, a: &Arguments) -> Result<(), Stri
                     "model",
                     "reasoning-effort",
                     "sandbox-mode",
+                    "controlled-effects",
                     "timeout-ms",
                     "resume",
                     "operation",
@@ -317,6 +323,7 @@ pub(super) fn work_command(l: &config::Loaded, a: &Arguments) -> Result<(), Stri
                     resume: a.flags.contains_key("resume"),
                     operation: a.options.get("operation").map(String::as_str),
                     inspect: a.flags.contains_key("inspect"),
+                    controlled_effects: a.flags.contains_key("controlled-effects"),
                 },
             )?;
             if a.flags.contains_key("themed") {

@@ -384,7 +384,9 @@ pub(crate) fn config_for_product(product_root: &Path) -> Result<Option<PathBuf>,
     let mut found = None;
     for project_id in names {
         let binding = read_binding(&project_id)?;
-        if bound_directory(&binding, "productRoot")? != product_root {
+        // Binding writers store canonical paths. An unrelated stale binding
+        // must not break discovery for a different source tree.
+        if binding["productRoot"].as_str() != product_root.to_str() {
             continue;
         }
         let Some(control) = binding.get("controlRoot") else {
@@ -470,8 +472,10 @@ fn binding_directory(create: bool) -> Result<PathBuf, String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&base, fs::Permissions::from_mode(0o700))
-            .map_err(|error| error.to_string())?;
+        if create {
+            fs::set_permissions(&base, fs::Permissions::from_mode(0o700))
+                .map_err(|error| error.to_string())?;
+        }
     }
     Ok(base)
 }

@@ -185,7 +185,7 @@ pub fn run() -> Result<(), String> {
         }
         portable
     } else {
-        match crate::project::layout_types::config_for_product(&project) {
+        match crate::project::portability::discover_from(&project) {
             Ok(Some(path)) => path,
             Ok(None) => {
                 if let Some(text) =
@@ -219,9 +219,9 @@ pub fn run() -> Result<(), String> {
             return Ok(());
         }
     };
-    if fs::canonicalize(&loaded.product_root).ok().as_deref() != Some(project.as_path())
+    if !project.starts_with(&loaded.product_root)
         || (loaded.mode == crate::project::layout_types::Mode::Portable
-            && !contained_existing(&project, &loaded.control_root))
+            && !contained_existing(&loaded.product_root, &loaded.control_root))
     {
         if let Some(text) = routing_text(event, update_context.as_deref(), Routing::Unresolved) {
             emit(event, &text)?;

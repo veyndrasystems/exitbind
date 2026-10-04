@@ -70,6 +70,7 @@ pub(crate) fn snapshot(loaded: &Loaded) -> Value {
         "project":{"identity":identity, "productRoot":loaded.product_root,
             "controlRoot":loaded.control_root,
             "memoryIdentity":crate::host::assignment_context::project_identity(loaded).ok()},
+        "placement":crate::project::portability::diagnostic(&loaded.product_root, &loaded.state_root, &loaded.control_root),
         "focus":focus, "lead":lead, "rules":rules, "memory":memory,
         "resources":resources,
         "integration":{"version":env!("CARGO_PKG_VERSION"),

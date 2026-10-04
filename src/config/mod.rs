@@ -61,7 +61,20 @@ const RETENTION_VALUES: &[&str] = &["task", "until-reviewed", "until-revoked", "
 const CROSS_CONTEXT_VALUES: &[&str] = &["none", "same-scope", "protocol-only", "synthetic-only"];
 
 pub fn load(path: Option<&str>) -> Result<Loaded, String> {
-    let requested = path.unwrap_or_else(|| crate::compatibility::profile().config);
+    let discovered = if path.is_none() {
+        crate::project::portability::discover_config()?
+    } else {
+        None
+    };
+    let requested = match path {
+        Some(value) => value,
+        None => match discovered.as_ref() {
+            Some(value) => value
+                .to_str()
+                .ok_or("discovered configuration is not UTF-8")?,
+            None => crate::compatibility::profile().config,
+        },
+    };
     if requested.trim().is_empty() {
         return Err("configuration path must be a non-empty string".into());
     }

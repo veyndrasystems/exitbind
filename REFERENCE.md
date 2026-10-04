@@ -595,6 +595,11 @@ the task outcome remains `unjudged` and acceptance is not applicable. The
 default sandbox request is `workspace-write`. A check run separately by the
 host or CI creates no Exitbind activity record.
 
+For automatic external control/state placement on managed hosts, see
+[project placement](docs/project-placement.md). The optional Linux file enforcement
+cell and its support matrix are described in
+[controlled file effects](docs/controlled-file-effects.md).
+
 For governed Work, the lead uses `exitbind work act WORK [--model MODEL]
 [--reasoning-effort EFFORT]` on the current action from `work next WORK
 --full`. A worker or reviewer action launches Codex with the checked packet
