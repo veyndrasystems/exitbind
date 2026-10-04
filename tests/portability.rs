@@ -148,6 +148,29 @@ fn readonly_xdg_uses_home_registry_and_keeps_it_after_xdg_becomes_writable() {
         later["placement"]["stateRoot"]
     );
     assert!(!f.state.join("exitbind/bindings").exists());
+    let home_registry = f.base.join(".local/state/exitbind/bindings");
+    fs::set_permissions(&home_registry, fs::Permissions::from_mode(0o500)).unwrap();
+    let unrelated = f.base.join("unrelated-source");
+    fs::create_dir(&unrelated).unwrap();
+    let other = call(&[
+        "init",
+        "--mode",
+        "auto",
+        "--skip-skills",
+        "--root",
+        unrelated.to_str().unwrap(),
+    ]);
+    fs::set_permissions(&home_registry, fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(other.status.success(), "{other:?}");
+    assert!(f.state.join("exitbind/bindings").exists());
+    let both = call(&["project", "context", "--json"]);
+    assert!(both.status.success(), "{both:?}");
+    let both: Value = serde_json::from_slice(&both.stdout).unwrap();
+    assert_eq!(first["project"], both["project"]);
+    assert_eq!(
+        first["placement"]["stateRoot"],
+        both["placement"]["stateRoot"]
+    );
     let repeated = call(&[
         "init",
         "--mode",
