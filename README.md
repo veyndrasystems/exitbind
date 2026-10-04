@@ -200,4 +200,5 @@ receipts, configuration and projected skills in place. See
 - [Work mutation results](docs/work-mutation-results.md)
 - [Command reference](REFERENCE.md) and [terminology](docs/glossary.md)
 - [Optional memory, hooks and receipts](docs/optional-surfaces.md)
+- [Optional Architecture Contract](docs/architecture-contract.md)
 - [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [License](LICENSE)

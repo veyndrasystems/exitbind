@@ -140,6 +140,10 @@ fn validate_start_version(event: &Value, line: usize, version: u64) -> Result<()
     }
     validate_basis_extension(event, line, version)?;
     let plan = &event["plan"];
+    if let Some(selection) = plan.get("architectureContract") {
+        crate::project::architecture::selection(selection)
+            .map_err(|error| format!("invalid run ledger line {line}: {error}"))?;
+    }
     if plan["version"] != 1 {
         return Err(format!(
             "invalid run ledger line {line}: invalid workflow plan"

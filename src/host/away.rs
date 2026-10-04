@@ -978,13 +978,14 @@ mod tests {
     }
 
     #[test]
-    fn prompt_separates_authority_while_preserving_adversarial_bytes() {
+    fn prompt_keeps_input() {
         let root =
             std::env::temp_dir().join(format!("soulmate-away-prompt-{}", std::process::id()));
         let loaded = Loaded {
             config: json!({}),
             agents: std::collections::BTreeMap::new(),
             lead: None,
+            architecture_contract: None,
             path: root.join("soulmate.json"),
             control_root: root.clone(),
             product_root: root.clone(),

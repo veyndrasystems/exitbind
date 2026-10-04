@@ -380,6 +380,7 @@ pub(crate) fn assert_no_drift(loaded: &Loaded, state: &Value) -> Result<(), Stri
         )));
     }
 
+    crate::project::architecture::assert_current(loaded)?;
     let mut seen = std::collections::BTreeSet::new();
     let stages = state["plan"]["stages"]
         .as_array()

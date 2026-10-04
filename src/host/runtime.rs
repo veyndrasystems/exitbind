@@ -377,7 +377,7 @@ pub fn run() -> Result<(), String> {
             "hookEventName":event,"additionalContext":context}}))
         .map_err(|_| String::new())?;
         if core_serialized.len() > MAX_OUTPUT {
-            "Exitbind profile or perspective exceeds the complete child context envelope; acquisition is unavailable.".to_owned()
+            "Exitbind profile, architecture or perspective exceeds the complete child context envelope; acquisition is unavailable.".to_owned()
         } else {
             let evidence = match &selected {
                 super::assignment_context::Selection::Bound { evidence, .. } => evidence.as_slice(),
@@ -391,7 +391,7 @@ pub fn run() -> Result<(), String> {
                     if serialized.len() <= MAX_OUTPUT {
                         context
                     } else {
-                        "Exitbind profile or perspective exceeds the complete child context envelope; acquisition is unavailable.".to_owned()
+                        "Exitbind profile, architecture or perspective exceeds the complete child context envelope; acquisition is unavailable.".to_owned()
                     }
                 }
                 None => "Evidence route or shortened-preview notice cannot fit beside the required profile and perspectives; assignment context is unavailable.".to_owned(),
@@ -571,12 +571,18 @@ fn format_agent_context(
             assignment,
             packet_digest,
             provenance,
+            architecture,
             ..
         } => {
             lines.push(format!(
                 "Current assignment: work {work}, assignment {assignment}, packet digest {packet_digest}."
             ));
             lines.push("Base profile is associated with this current assignment; model use is not inferred.".into());
+            if let Some(architecture) = architecture {
+                lines.push(format!(
+                    "Current architecture contract slice: {architecture}"
+                ));
+            }
             lines.push(format!(
                 "Assignment provenance: project {}, work {}, assignment {}, role {}, configured agent {}, native task {}, profile source SHA-256 {}, packet context SHA-256 {}, project rules projection SHA-256 {}, root scope {}.",
                 safe_inline(&provenance.project),

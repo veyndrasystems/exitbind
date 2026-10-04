@@ -14,6 +14,7 @@ pub struct Loaded {
     pub agents: BTreeMap<String, crate::config::types::AgentConfig>,
     /// The validated `orchestration.lead` agent name.
     pub lead: Option<String>,
+    pub(crate) architecture_contract: Option<crate::project::architecture::Selection>,
     pub path: PathBuf,
     pub control_root: PathBuf,
     pub product_root: PathBuf,
@@ -106,10 +107,15 @@ pub fn load(path: Option<&str>) -> Result<Loaded, String> {
         .map_err(|error| format!("internal typed configuration projection failed: {error}"))?;
     let layout = crate::project::layout_types::resolve(&path, &config)?;
     let lead = config["orchestration"]["lead"].as_str().map(str::to_owned);
+    let architecture_contract = config["project"]
+        .get("architectureContract")
+        .map(crate::project::architecture::selection)
+        .transpose()?;
     Ok(Loaded {
         config,
         agents,
         lead,
+        architecture_contract,
         path,
         control_root: layout.control_root,
         product_root: layout.product_root,
@@ -192,7 +198,15 @@ fn validate_project(value: &Value, errors: &mut Vec<String>) {
         errors.push("project.root must be a string".into());
         return;
     };
-    reject_unknown(project, &["root", "mode", "id"], "project", errors);
+    reject_unknown(
+        project,
+        &["root", "mode", "id", "architectureContract"],
+        "project",
+        errors,
+    );
+    if let Some(selected) = project.get("architectureContract") {
+        crate::project::architecture::validate_selection(selected, errors);
+    }
     match project.get("root").and_then(Value::as_str) {
         None => errors.push("project.root must be a string".into()),
         Some(root) if root.trim().is_empty() => {

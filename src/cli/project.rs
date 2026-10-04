@@ -5,6 +5,31 @@ use crate::{config::Loaded, project::context};
 
 pub(super) fn command(loaded: &Loaded, arguments: &Arguments) -> Result<(), String> {
     let action = arguments.positional.first().map(String::as_str);
+    if action == Some("architecture") {
+        args::assert_options("project architecture", arguments, &["config", "json"])?;
+        let checking = match arguments.positional.get(1).map(String::as_str) {
+            None => {
+                args::assert_positionals("project architecture", arguments, 1)?;
+                false
+            }
+            Some("check") => {
+                args::assert_positionals("project architecture check", arguments, 2)?;
+                true
+            }
+            _ => return Err("project architecture accepts only check".into()),
+        };
+        let value = if checking {
+            crate::project::architecture::check(loaded)?
+        } else {
+            crate::project::architecture::inspect(loaded)?
+        };
+        print_json(&value)?;
+        return if value["outcome"] == "failed" {
+            Err("architecture contract check failed".into())
+        } else {
+            Ok(())
+        };
+    }
     if action == Some("agents") {
         args::assert_options("project agents", arguments, &["config", "json", "apply"])?;
         args::assert_positionals("project agents", arguments, 1)?;
@@ -17,7 +42,7 @@ pub(super) fn command(loaded: &Loaded, arguments: &Arguments) -> Result<(), Stri
     }
     args::assert_options("project context", arguments, &["config", "json"])?;
     if action != Some("context") {
-        return Err("project requires context or agents".into());
+        return Err("project requires context, agents or architecture".into());
     }
     match arguments.positional.get(1).map(String::as_str) {
         None => {

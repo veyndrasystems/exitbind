@@ -49,6 +49,15 @@ acceptance separate. Missing or oversized material remains explicitly incomplete
 and uses the emitted expert expansion. Do not repeat profile/rule discovery
 when the current complete delivery already contains it.
 
+When the project selects an Architecture Contract, current role detail carries
+its applicable responsibilities, dependency directions, interfaces and checks
+with exact source/configuration provenance. Use that current slice as context;
+the Lead may propose changes through the existing approval process. A contract
+grants no authority and an unselected proposal is not current architecture.
+Small direct work needs no architecture configuration. `exitbind project
+architecture check --json` evaluates bounded literal file checks only when
+explicitly invoked or included in the existing declared Work check command.
+
 For an explicit work locator, first run `exitbind work next WORK --json`
 to recover the bounded current action. Use `effectiveAction` and follow its
 exact `detail.command` for complete assignment, evidence, tasks and bound action
