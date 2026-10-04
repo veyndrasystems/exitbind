@@ -5,7 +5,7 @@ use std::{
     fs,
     io::Write,
     path::{Path, PathBuf},
-    process::{Command, Output, Stdio},
+    process::{Output, Stdio},
 };
 
 fn temp(label: &str) -> PathBuf {
@@ -15,7 +15,7 @@ fn temp(label: &str) -> PathBuf {
 }
 
 fn invoke(arguments: &[&str], bindings: &Path) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_soulmate"))
+    support::git_topology::command(env!("CARGO_BIN_EXE_soulmate"))
         .env("SOULMATE_BINDINGS_DIR", bindings)
         .args(arguments)
         .output()
@@ -31,9 +31,7 @@ fn output_text(output: &Output) -> String {
 }
 
 fn git(root: &Path, arguments: &[&str]) -> Output {
-    Command::new("git")
-        .arg("-C")
-        .arg(root)
+    support::git_topology::git(root)
         .args(arguments)
         .output()
         .unwrap()
@@ -175,7 +173,7 @@ fn local_mode_separates_control_product_state_and_preserves_git_status() {
     );
     assert!(checked.status.success(), "{}", output_text(&checked));
 
-    let mut hook = Command::new(env!("CARGO_BIN_EXE_soulmate"))
+    let mut hook = support::git_topology::command(env!("CARGO_BIN_EXE_soulmate"))
         .env("SOULMATE_BINDINGS_DIR", &bindings)
         .arg("hook-run")
         .stdin(Stdio::piped())
@@ -433,7 +431,7 @@ fn git_marker_without_git_fails_with_the_missing_dependency() {
     fs::create_dir(&bindings).unwrap();
     fs::create_dir(root.join(".git")).unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_soulmate"))
+    let output = support::git_topology::command(env!("CARGO_BIN_EXE_soulmate"))
         .env("SOULMATE_BINDINGS_DIR", &bindings)
         .env("PATH", "/nonexistent")
         .args(["init", "--root", root.to_str().unwrap()])

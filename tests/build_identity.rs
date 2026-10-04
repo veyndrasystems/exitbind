@@ -9,14 +9,17 @@ mod support;
 #[test]
 fn version_json_names_build_and_local_executable_digest_without_authenticating() {
     let binary = env!("CARGO_BIN_EXE_exitbind");
-    let plain = Command::new(binary).arg("version").output().unwrap();
+    let plain = support::git_topology::command(binary)
+        .arg("version")
+        .output()
+        .unwrap();
     assert!(plain.status.success(), "{plain:?}");
     assert_eq!(
         String::from_utf8(plain.stdout).unwrap().trim(),
         env!("CARGO_PKG_VERSION")
     );
 
-    let output = Command::new(binary)
+    let output = support::git_topology::command(binary)
         .args(["version", "--json"])
         .output()
         .unwrap();
@@ -36,7 +39,7 @@ fn version_json_names_build_and_local_executable_digest_without_authenticating()
         .unwrap()
         .starts_with("none:"));
 
-    let refused = Command::new(binary)
+    let refused = support::git_topology::command(binary)
         .args(["version", "--json", "extra"])
         .output()
         .unwrap();
@@ -52,7 +55,8 @@ fn copied_exitbind_keeps_identity_while_soulmate_target_stays_legacy() {
     support::place_executable(Path::new(env!("CARGO_BIN_EXE_exitbind")), &soulmate_copy);
 
     let assert_identity = |binary: &Path, expected: &str| {
-        let output = support::run(Command::new(binary).args(["version", "--json"]));
+        let output =
+            support::run(support::git_topology::command(binary).args(["version", "--json"]));
         assert!(output.status.success(), "{output:?}");
         let identity: Value = serde_json::from_slice(&output.stdout).unwrap();
         assert_eq!(identity["name"], expected);
@@ -66,7 +70,7 @@ fn copied_exitbind_keeps_identity_while_soulmate_target_stays_legacy() {
             .success());
         support::git_topology::assert_worktree(project, project);
         let init = support::run(
-            Command::new(binary)
+            support::git_topology::command(binary)
                 .args(["init", "--mode", "portable", "--root"])
                 .arg(project),
         );
@@ -121,7 +125,7 @@ fn binary_consumer_binds_exact_executable_and_refuses_same_version_mismatches() 
     let root = support::temp("consumer-identity");
     let copied = root.join("exitbind candidate's bytes");
     support::place_executable(Path::new(env!("CARGO_BIN_EXE_exitbind")), &copied);
-    let version = support::run(Command::new(&copied).args(["version", "--json"]));
+    let version = support::run(support::git_topology::command(&copied).args(["version", "--json"]));
     assert!(version.status.success(), "{version:?}");
     let identity: Value = serde_json::from_slice(&version.stdout).unwrap();
     let commit = identity["commit"]

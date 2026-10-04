@@ -1,10 +1,16 @@
 //! Fixture identity is a precondition, never inferred from Exitbind's result.
-use std::{fs, path::Path, path::PathBuf, process::Command};
+use std::{ffi::OsStr, fs, path::Path, path::PathBuf, process::Command};
+
+/// Owned fixture commands must observe the same Git environment as preflight.
+pub fn command(program: impl AsRef<OsStr>) -> Command {
+    let mut command = Command::new(program);
+    isolate(&mut command);
+    command
+}
 
 pub fn git(root: &Path) -> Command {
-    let mut command = Command::new("git");
+    let mut command = command("git");
     command.arg("-C").arg(root);
-    isolate(&mut command);
     command
 }
 

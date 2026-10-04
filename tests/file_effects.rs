@@ -10,7 +10,7 @@ use std::{
 mod support;
 
 fn call(root: &Path, args: &[&str], body: &[u8]) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_exitbind"))
+    let mut child = support::git_topology::command(env!("CARGO_BIN_EXE_exitbind"))
         .current_dir(root)
         .args(args)
         .args(["--config", "exitbind.json"])
@@ -30,7 +30,7 @@ fn ok(root: &Path, args: &[&str], body: &[u8]) -> Value {
 fn project(broad: bool) -> (PathBuf, String, String) {
     let root = support::temp("file-effect");
     support::git_topology::repository(&root);
-    let output = Command::new(env!("CARGO_BIN_EXE_exitbind"))
+    let output = support::git_topology::command(env!("CARGO_BIN_EXE_exitbind"))
         .args(["init", "--mode", "portable", "--skip-skills", "--root"])
         .arg(&root)
         .output()
@@ -522,7 +522,7 @@ fn real_process_crashes_reconcile_four_cuts_without_duplicate_writes_or_new_gran
         permit(&root, &work, &assignment);
         let marker = root.join("stopped");
         let mut child = CrashChild(Some(
-            Command::new(env!("CARGO_BIN_EXE_exitbind"))
+            support::git_topology::command(env!("CARGO_BIN_EXE_exitbind"))
                 .current_dir(&root)
                 .args([
                     "work",

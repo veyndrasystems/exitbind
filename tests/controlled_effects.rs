@@ -7,7 +7,7 @@ use std::{
     io::{BufRead, BufReader, Write},
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::PathBuf,
-    process::{Command, Output, Stdio},
+    process::{Output, Stdio},
 };
 
 struct Fixture {
@@ -20,7 +20,7 @@ impl Fixture {
     fn new() -> Self {
         let root = support::temp("controlled-file");
         support::git_topology::repository(&root);
-        let init = Command::new(env!("CARGO_BIN_EXE_exitbind"))
+        let init = support::git_topology::command(env!("CARGO_BIN_EXE_exitbind"))
             .args(["init", "--mode", "portable", "--skip-skills", "--root"])
             .arg(&root)
             .output()
@@ -75,7 +75,7 @@ impl Fixture {
         f
     }
     fn call(&self, args: &[&str], body: &[u8]) -> Output {
-        let mut c = Command::new(env!("CARGO_BIN_EXE_exitbind"))
+        let mut c = support::git_topology::command(env!("CARGO_BIN_EXE_exitbind"))
             .current_dir(&self.root)
             .args(args)
             .args(["--config", "exitbind.json"])
@@ -199,7 +199,7 @@ fn persistent_transport_observes_configuration_revocation_before_replay() {
     ]);
     assert_eq!(first[1]["result"]["isError"], false);
     let inode = fs::metadata(f.root.join("src/a.txt")).unwrap().ino();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_exitbind"))
+    let mut child = support::git_topology::command(env!("CARGO_BIN_EXE_exitbind"))
         .current_dir(&f.root)
         .args([
             "work",
