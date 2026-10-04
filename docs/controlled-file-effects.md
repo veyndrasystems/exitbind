@@ -12,9 +12,9 @@ The file tool checks current authority again at admission.
 
 | Host and path | UTF-8 replacement capability |
 | --- | --- |
-| Linux, Codex 0.160.0, explicit controlled launch, capability preflight passes | **enforced** for this file effect |
+| Linux, Codex 0.160.0, host-writable source, explicit controlled launch, capability preflight passes | **enforced** for this file effect |
 | Ordinary native workspace-write, including the managed shell tool and expert `work write` | **mediated/advisory**; equivalent native writes remain possible |
-| Controlled launch on other OS/version, inherited project/managed Codex configuration, failed protection preflight, or resumed session | **unsupported**; the explicit option refuses |
+| Controlled launch on other OS/version, inherited project/system/managed Codex configuration, failed protection preflight, or resumed session | **unsupported**; the explicit option refuses |
 
 The supported cell trusts the operator's installed Codex and Exitbind binaries
 and their launch environment. It constrains the governed worker and its child
@@ -34,7 +34,7 @@ flowchart LR
 ```
 
 The launcher ignores user configuration and execpolicy rules, disables apps,
-plugins and hooks, refuses project/managed Codex configuration, and configures
+plugins and hooks, refuses project/system/managed Codex configuration, and configures
 only this MCP server. Its per-tool approval setting permits transport calls;
 it grants no file authority. A native read-only preflight must observe the
 selected source, control, state and executable roots as present and unwritable.

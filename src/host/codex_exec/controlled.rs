@@ -43,12 +43,13 @@ pub(super) fn validate(request: &Request) -> Result<(), RunError> {
         }
     }
     for name in [
+        "/etc/codex/config.toml",
         "/etc/codex/managed_config.toml",
         "/etc/codex/requirements.toml",
     ] {
         if Path::new(name).symlink_metadata().is_ok() {
             return Err(RunError::InvalidRequest(
-                "controlled effects do not support managed Codex configuration",
+                "controlled effects do not support system or managed Codex configuration",
             ));
         }
     }
