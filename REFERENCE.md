@@ -597,6 +597,14 @@ the current project, focus, rule, memory, and optional resource observations.
 These are context, not a check, approval, or permission. A changed source or
 unavailable observation is reported as unavailable, not projected as current.
 
+An optional `project.architectureContract` selection pins a project-relative
+JSON source, exact SHA256 and revision. `project architecture --json` reads the
+current contract; `project architecture check --json` evaluates its bounded
+literal file assertions and returns nonzero for failure. Current assignment
+detail and native role context receive only the applicable slice. See
+[Architecture Contract](docs/architecture-contract.md) for the format,
+current/proposed distinction, authority and check coverage.
+
 ## Run and recovery
 
 Run state is private operational data beneath StateRoot. Each assignment fixes

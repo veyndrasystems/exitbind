@@ -164,12 +164,13 @@ pub fn supersede_with_policy(
         if fs::read_to_string(&loaded.path).map_err(|error| error.to_string())? != loaded.source {
             return Err("configuration changed while superseding; reload configuration".into());
         }
-        let plan = crate::config::boundary::apply(
+        let mut plan = crate::config::boundary::apply(
             loaded,
             selected_plan(envelope::plan(loaded, workflow, goal)?)?,
             boundary,
         )?;
         let extension = extension_from_cli(basis, review_policy)?;
+        crate::project::architecture::bind_plan(loaded, &mut plan)?;
         let old_policy = old_state
             .get("checkPolicy")
             .map(|policy| crate::run_value::policy_from_value(policy, 0))

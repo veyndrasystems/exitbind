@@ -246,6 +246,9 @@ fn packet(state: &Value, agent: &Value, upstream: &[Value]) -> Value {
     if let Some(references) = agent.get("memoryReferences") {
         assignment["memoryReferences"] = references.clone();
     }
+    if let Some(selection) = state["plan"].get("architectureContract") {
+        assignment["architectureContractSha256"] = json!(crate::evidence::hash::value(selection));
+    }
     if let Some(receipt) = state.get("harnessReceipt") {
         assignment["harnessReceipt"] = receipt.clone();
     }
