@@ -75,6 +75,44 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn portable_home_context_does_not_implicitly_configure_an_unrelated_workspace() {
+    let f = Fixture::new();
+    let init = f.call(&f.base, &["init", "--mode", "portable", "--skip-skills"]);
+    assert!(init.status.success(), "{init:?}");
+    let out = f.call(
+        &f.source.join("nested"),
+        &[
+            "work",
+            "classify",
+            "--material-consequence",
+            "true",
+            "--promotion-required",
+            "false",
+            "--json",
+        ],
+    );
+    assert!(out.status.success(), "{out:?}");
+    let result: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(result["availability"]["configuration"], false);
+    assert_eq!(result["assessment"]["activation"], "blocked");
+    let explicit = f.call(
+        &f.source.join("nested"),
+        &[
+            "project",
+            "context",
+            "--config",
+            f.base.join("exitbind.json").to_str().unwrap(),
+            "--json",
+        ],
+    );
+    assert!(explicit.status.success(), "{explicit:?}");
+    assert_eq!(
+        f.context(&f.base)["placement"]["sourceRoot"],
+        f.base.to_str().unwrap()
+    );
+}
+
+#[test]
 fn readonly_source_bootstraps_without_surgery_and_nested_context_has_one_identity() {
     let f = Fixture::new();
     fs::write(f.source.join("keep.txt"), "source sentinel").unwrap();

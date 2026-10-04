@@ -26,6 +26,9 @@ source directories and reports `placement`: source root, Git root and metadata
 locations, topology, control/state/runtime roots and observed capabilities. It
 uses canonical Git interfaces and does not assume `.git` is a writable directory.
 A no-Git or wrapped workspace receives an explicit unavailable Git classification.
+An ordinary portable configuration at the user's home directory is not inherited
+by unrelated no-Git child workspaces. Use its explicit configuration or local
+project binding when that home directory itself is the selected project.
 Read-only context and native context propagation do not chmod binding metadata.
 
 A read-only source can support context inspection with writable external state.

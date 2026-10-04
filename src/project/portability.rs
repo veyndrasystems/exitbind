@@ -173,7 +173,14 @@ pub(crate) fn discover_config() -> Result<Option<PathBuf>, String> {
 
 pub(crate) fn discover_from(cwd: &Path) -> Result<Option<PathBuf>, String> {
     let top = git_preflight::worktree_root(cwd).ok().flatten();
+    let home = std::env::var_os("HOME").and_then(|value| fs::canonicalize(value).ok());
     for ancestor in cwd.ancestors() {
+        // HOME may hold a plan-only host context. It is not an implicit
+        // portable project for every unrelated no-Git workspace below it.
+        // An explicit local binding or --config still selects that project.
+        if top.is_none() && ancestor != cwd && home.as_deref() == Some(ancestor) {
+            return layout_types::config_for_product(ancestor);
+        }
         let candidate = ancestor.join(crate::compatibility::profile().config);
         if let Ok(info) = candidate.symlink_metadata() {
             if info.file_type().is_symlink() || !info.is_file() {
