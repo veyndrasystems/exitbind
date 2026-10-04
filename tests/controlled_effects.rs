@@ -4,7 +4,7 @@ mod support;
 use serde_json::{json, Value};
 use std::{
     fs,
-    io::Write,
+    io::{BufRead, BufReader, Write},
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::PathBuf,
     process::{Command, Output, Stdio},
@@ -176,6 +176,69 @@ fn host_bound_transport_requires_current_grant_and_strict_parameters() {
     assert_eq!(stale[2]["result"]["isError"], true);
     assert_eq!(fs::metadata(f.root.join("src/a.txt")).unwrap().ino(), inode);
     assert!(!f.root.join("src/late.txt").exists());
+}
+
+#[test]
+fn persistent_transport_observes_configuration_revocation_before_replay() {
+    let f = Fixture::new();
+    f.ok(
+        &[
+            "work",
+            "permit",
+            &f.work,
+            &f.worker,
+            "--operation",
+            "fixture",
+        ],
+        b"",
+    );
+    let first = f.mcp(&[
+        json!({"action":"read","path":"src/a.txt"}),
+        json!({"action":"edit","path":"src/a.txt","content":"once"}),
+    ]);
+    assert_eq!(first[1]["result"]["isError"], false);
+    let inode = fs::metadata(f.root.join("src/a.txt")).unwrap().ino();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_exitbind"))
+        .current_dir(&f.root)
+        .args([
+            "work",
+            "file-serve",
+            &f.session,
+            "--config",
+            "exitbind.json",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let mut output = BufReader::new(child.stdout.take().unwrap());
+    writeln!(
+        input,
+        "{}",
+        json!({"jsonrpc":"2.0","id":1,"method":"initialize"})
+    )
+    .unwrap();
+    input.flush().unwrap();
+    let mut line = String::new();
+    output.read_line(&mut line).unwrap();
+    assert!(serde_json::from_str::<Value>(&line).unwrap()["result"].is_object());
+    let cfg = f.root.join("exitbind.json");
+    let mut data: Value = serde_json::from_slice(&fs::read(&cfg).unwrap()).unwrap();
+    data["agents"]["worker"]["write"] = json!([]);
+    fs::write(cfg, data.to_string()).unwrap();
+    writeln!(input, "{}", json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"file","arguments":{"action":"edit","path":"src/a.txt","content":"once"}}})).unwrap();
+    input.flush().unwrap();
+    line.clear();
+    output.read_line(&mut line).unwrap();
+    drop(input);
+    drop(output);
+    let end = child.wait_with_output().unwrap();
+    assert!(end.status.success(), "{end:?}");
+    let replay: Value = serde_json::from_str(&line).unwrap();
+    assert_eq!(replay["result"]["isError"], true, "{replay}");
+    assert_eq!(fs::metadata(f.root.join("src/a.txt")).unwrap().ino(), inode);
 }
 
 #[test]

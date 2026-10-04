@@ -287,7 +287,6 @@ fn upgrade_binding(
 
 fn read_binding(project_id: &str) -> Result<Value, String> {
     let path = super::binding_location::locate(project_id)?.ok_or("project binding unavailable")?;
-    let directory = path.parent().ok_or("project binding has no parent")?;
     let metadata =
         fs::symlink_metadata(&path).map_err(|error| format!("project binding: {error}"))?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
@@ -444,7 +443,7 @@ pub(super) fn binding_directory_at(base: &Path, create: bool) -> Result<PathBuf,
         }
     }
     let metadata =
-        fs::symlink_metadata(&base).map_err(|error| format!("binding directory: {error}"))?;
+        fs::symlink_metadata(base).map_err(|error| format!("binding directory: {error}"))?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err("binding directory must be a real directory".into());
     }
@@ -452,7 +451,7 @@ pub(super) fn binding_directory_at(base: &Path, create: bool) -> Result<PathBuf,
     {
         use std::os::unix::fs::PermissionsExt;
         if create {
-            fs::set_permissions(&base, fs::Permissions::from_mode(0o700))
+            fs::set_permissions(base, fs::Permissions::from_mode(0o700))
                 .map_err(|error| error.to_string())?;
         }
     }

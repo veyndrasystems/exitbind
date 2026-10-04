@@ -77,8 +77,17 @@ fn dispatch(loaded: &Loaded, session: &str, request: &Value) -> Result<Value, St
             }
             let args: Arguments = serde_json::from_value(request["params"]["arguments"].clone())
                 .map_err(|_| "file tool accepts only action, path and edit content")?;
+            // A long-lived transport must not reuse startup configuration for
+            // reconciliation. The fixed preparation rejects a changed governing
+            // configuration, including an already-completed replay.
+            let current = crate::config::load(Some(
+                loaded
+                    .path
+                    .to_str()
+                    .ok_or("file transport configuration is not UTF-8")?,
+            ))?;
             let result = interact_content(
-                loaded,
+                &current,
                 &args.action,
                 session,
                 &args.path,
