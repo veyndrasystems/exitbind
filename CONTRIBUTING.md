@@ -30,6 +30,38 @@ formatting and lint behavior aligned. The separate `rust-version` field in
 
 The project has no required service, database, daemon, or model runtime.
 
+Bind verification to the executable you actually invoke: record its absolute
+path, `version --json` producer commit, independently computed SHA-256, and
+acquisition class (`development` or authenticated `release`). Equal semantic
+versions can contain different development or release bytes. A null commit is
+`producer unresolved`; a digest mismatch is unresolved until explained.
+
+For a development candidate, commit the selected source, verify the checkout is
+clean, and build with `EXITBIND_BUILD_COMMIT=$(git rev-parse HEAD) cargo build
+--locked`. This embeds an identity supplied by the builder; it authenticates no
+source by itself. Label dirty builds as development snapshots, never as unchanged
+bytes from their base commit. Keep the exact candidate path for subsequent checks.
+
+Compare caller-selected values with the standard-library helper:
+
+```sh
+python3 scripts/verify-binary.py /absolute/path/to/exitbind \
+  --class development --commit EXPECTED_FULL_COMMIT --sha256 EXPECTED_SHA256
+```
+
+The helper refuses a null producer or mismatched bytes even if the version
+matches. For releases, first authenticate the expected values using release
+checksums/attestations; `--class release` records acquisition intent and does not
+authenticate a release. See [binary identity in onboarding](docs/onboarding.md#binary-identity).
+
+Portability fixtures assert their Git topology before invoking Exitbind. Tests
+that need no Git require a marker-free temporary directory and ancestors. Set
+`EXITBIND_TEST_NO_GIT_ROOT` to an existing permitted marker-free directory when
+the default temporary root inherits Git. If no such namespace is available,
+`EXITBIND_TEST_NO_GIT_UNAVAILABLE=1` explicitly emits `COVERAGE UNAVAILABLE`
+and exercises no product behavior for those cases; report them as untested,
+separately from the mandatory enclosing-Git, Gitfile and refusal cases.
+
 Run the shared native CI sequence from any working directory:
 
 ```sh

@@ -14,6 +14,7 @@ use std::{
 
 fn project(label: &str) -> std::path::PathBuf {
     let root = support::temp(label);
+    support::git_topology::repository(&root);
     let output = Command::new(env!("CARGO_BIN_EXE_exitbind"))
         .args(["init", "--mode", "portable", "--root"])
         .arg(&root)

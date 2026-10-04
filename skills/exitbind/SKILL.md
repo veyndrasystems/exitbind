@@ -18,6 +18,16 @@ governance, not merely keeping a harmless local file.
 
 Small reversible work stays direct: do not initialize a project or ask workflow or review-policy questions for it. In an already configured project, an explicit request for lightweight direct Codex recording may use `exitbind activity codex < PROMPT_FILE`; its private observation is unjudged, not governed acceptance. The governed protocol surfaces only for material or promotion-required work, resuming governed work, or explicit cross-host continuation. An instruction or configuration filename alone does not make a change consequential; assess its actual effects and applicable project requirements. Classification is the lead's job, not a user questionnaire. Reuse existing scoped authorization and review decisions; ask only when a genuinely new decision is needed.
 
+Before first diagnosis or governed invocation, select the exact executable path
+and run that path's `version --json`. Record its version, producer commit,
+SHA-256 independently checked against `executableSha256`, and development or
+release acquisition class. Continue using that path. A null commit is `producer
+unresolved`; a digest mismatch stays unresolved. Never choose between binaries
+from the version string alone. Compare with the intended clean development
+commit or authenticated release evidence before attributing observations to it;
+see the repository's `scripts/verify-binary.py` and contributor guide. Existing
+records retain their recorded producer, including unresolved historical builds.
+
 For already governed work, continue with `exitbind work resume`; start new governed work
 with `exitbind work begin` and record `--review-policy required` or
 `--review-policy omitted` at entry. Follow the returned next action instead of asking

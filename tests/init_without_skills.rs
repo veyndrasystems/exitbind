@@ -7,7 +7,9 @@ use std::{
 };
 
 fn temp(label: &str) -> PathBuf {
-    support::temp(&format!("init-without-skills-{label}"))
+    let root = support::temp(&format!("init-without-skills-{label}"));
+    support::git_topology::repository(&root);
+    root
 }
 
 fn invoke(arguments: &[&str]) -> Output {
@@ -26,6 +28,10 @@ fn text(output: &Output) -> String {
 }
 
 fn init(root: &Path, extra: &[&str]) -> Output {
+    if !root.join(".git").exists() {
+        support::git_topology::repository(root);
+    }
+    support::git_topology::assert_worktree(root, root);
     let mut arguments = vec!["init", "--mode", "portable", "--root"];
     arguments.push(root.to_str().unwrap());
     arguments.extend_from_slice(extra);

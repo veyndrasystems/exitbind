@@ -298,6 +298,19 @@ check, review, lead acceptance, and rework. `run next --text` can retrieve the
 recorded assignment later, with prior artifact references; it does not restore
 the conversation or prove the host followed the skill.
 
+## Binary identity
+
+Before diagnosis, verification or skill refresh, select one absolute executable
+path and run that executable's `version --json`. Record its semantic version,
+producer `commit`, `executableSha256`, an independent SHA-256 of the same file,
+and its development or release acquisition class. Continue with that exact
+path. A null commit means **producer unresolved**; a digest mismatch remains
+unresolved. A matching version string is insufficient to select a producer.
+Development builds retain the release version until an authorized release.
+Use the [contributor comparison helper](../CONTRIBUTING.md#development-setup)
+for expected producer/byte values. Release checksums and attestations supply
+release authentication; a local hash and embedded commit only identify bytes.
+
 After a binary update, explicitly refresh only owned project skill copies:
 
 ```sh

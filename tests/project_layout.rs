@@ -9,7 +9,9 @@ use std::{
 };
 
 fn temp(label: &str) -> PathBuf {
-    fs::canonicalize(support::temp(label)).unwrap()
+    let root = fs::canonicalize(support::temp(label)).unwrap();
+    support::git_topology::repository(&root);
+    root
 }
 
 fn invoke(arguments: &[&str], bindings: &Path) -> Output {

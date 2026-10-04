@@ -19,6 +19,7 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let root = support::temp("controlled-file");
+        support::git_topology::repository(&root);
         let init = Command::new(env!("CARGO_BIN_EXE_exitbind"))
             .args(["init", "--mode", "portable", "--skip-skills", "--root"])
             .arg(&root)

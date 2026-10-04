@@ -75,6 +75,15 @@ pub(crate) fn automatic(
         .map(str::to_owned)
         .unwrap_or_else(|| format!("workspace-{}", &hash::text(text)[..32]));
     layout_types::validate_id(&id)?;
+    // Validate explicit placement before creating any directories. A refused
+    // source-contained root must not leave bootstrap directories in source.
+    for explicit in [control, state].into_iter().flatten() {
+        let root = Path::new(explicit);
+        normalized_storage(root)?;
+        if root.starts_with(product) || product.starts_with(root) {
+            return Err("storage preflight: explicit control/state roots are incompatible with source; choose owned private external --control-root and --state-root outside source, then retry without relocating source".into());
+        }
+    }
     let (control, state) = if let (Some(control), Some(state)) = (control, state) {
         (PathBuf::from(control), PathBuf::from(state))
     } else {
@@ -110,7 +119,7 @@ pub(crate) fn automatic(
         )
     };
     for root in [&control, &state] {
-        owned_directory(root)?;
+        owned_directory(root).map_err(|error| format!("storage preflight: {error}; choose an owned private writable --control-root and --state-root outside source"))?;
     }
     Ok(Roots {
         product: product.into(),
@@ -120,14 +129,19 @@ pub(crate) fn automatic(
     })
 }
 
-fn owned_directory(root: &Path) -> Result<(), String> {
+fn normalized_storage(root: &Path) -> Result<(), String> {
     if !root.is_absolute()
         || root
             .components()
             .any(|c| matches!(c, std::path::Component::ParentDir))
     {
-        return Err("automatic storage requires normalized absolute paths".into());
+        return Err("storage preflight: automatic storage requires normalized absolute paths; provide absolute --control-root and --state-root outside source".into());
     }
+    Ok(())
+}
+
+fn owned_directory(root: &Path) -> Result<(), String> {
+    normalized_storage(root)?;
     let mut current = PathBuf::new();
     for part in root.components() {
         current.push(part);
@@ -218,8 +232,15 @@ pub(crate) fn diagnostic(product: &Path, state: &Path, control: &Path) -> Value 
             }
             json!({"state":"available","root":top,"gitDir":paths[0],"commonDir":paths[1],"topology":if paths[0].is_some() && paths[0] != paths[1] {"worktree"} else {"ordinary-or-gitfile"}})
         }
-        Ok(None) => json!({"state":"unavailable","topology":"no-git-or-wrapped"}),
-        Err(_) => json!({"state":"unavailable","topology":"git-command-unavailable"}),
+        Ok(None) => {
+            json!({"state":"unavailable","topology":"no-git","discovery":"marker-free-fallback","detail":"No .git marker or Git worktree was discovered; canonical source identity is retained."})
+        }
+        Err(error) if git_preflight::has_git_marker(product) => {
+            json!({"state":"unavailable","topology":"git-preflight-failed","detail":error,"nextAction":"Inspect the .git marker and provide Git on PATH; resolve Git discovery before bootstrap."})
+        }
+        Err(error) => {
+            json!({"state":"unavailable","topology":"no-git","discovery":"marker-free-fallback","detail":error})
+        }
     };
     json!({"sourceRoot":product,"git":git,"controlRoot":control,"stateRoot":state,"runtimeRoot":state,
         "sourceCapability":if writable(product) {"writable"} else {"read-only"},

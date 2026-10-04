@@ -29,6 +29,7 @@ fn ok(root: &Path, args: &[&str], body: &[u8]) -> Value {
 }
 fn project(broad: bool) -> (PathBuf, String, String) {
     let root = support::temp("file-effect");
+    support::git_topology::repository(&root);
     let output = Command::new(env!("CARGO_BIN_EXE_exitbind"))
         .args(["init", "--mode", "portable", "--skip-skills", "--root"])
         .arg(&root)

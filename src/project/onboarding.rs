@@ -39,6 +39,9 @@ pub fn init_with_options(options: InitOptions<'_>) -> Result<PathBuf, String> {
         control_root,
         state_root,
     } = options;
+    if mode == Some("portable") && (control_root.is_some() || state_root.is_some()) {
+        return Err("bootstrap options preflight: explicit --control-root and --state-root require --mode local or auto; portable mode stores control and state in source".into());
+    }
     // Auto placement is explicit, or selected when the ordinary source cannot
     // hold bootstrap files. Explicit portable/local choices retain precedence.
     let discovered = crate::project::portability::source(Path::new(product_root))?;
@@ -78,7 +81,7 @@ pub fn init_with_options(options: InitOptions<'_>) -> Result<PathBuf, String> {
         Some("portable") => "portable",
         Some(_) => return Err("--mode must be local or portable".into()),
         None if in_worktree || crate::project::git_preflight::has_git_marker(&product) => {
-            return Err("init in a Git worktree requires explicit --mode local or portable".into())
+            return Err("bootstrap mode preflight: init in a Git worktree requires explicit --mode local or portable; use --mode auto for owned external storage, or select portable for approved source writes".into())
         }
         None => "portable",
     };
