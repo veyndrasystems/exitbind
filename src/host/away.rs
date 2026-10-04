@@ -224,13 +224,13 @@ fn run_child_inner(
         .parse::<u64>()
         .map_err(|_| "invalid away attempt")?;
     let sandbox = child_sandbox_posture(sandbox)?;
-    write_private(&run_dir.join("status"), "preparing")?;
     let prepared = prepare(loaded, ledger, agent, require_harness)?;
     if prepared.assignment["stage"] != expected_stage
         || prepared.assignment["attempt"] != expected_attempt
     {
         return Err("pending assignment changed before native launch".into());
     }
+    write_private(&run_dir.join("status"), "preparing")?;
     let codex = executable(
         if crate::producer::exitbind_surface() {
             "EXITBIND_AWAY_CODEX_BIN"
@@ -420,6 +420,7 @@ fn prepare(
 ) -> Result<Prepared, String> {
     let packet = run::next(loaded, ledger)?;
     let assignment = select_assignment(&packet, agent, require_harness)?;
+    crate::project::architecture::away_supported(loaded, &assignment)?;
     super::assignment_context::verify_away_context(loaded, &packet, &assignment)?;
     let profile_path = assignment["profile"]["path"]
         .as_str()
@@ -937,6 +938,10 @@ fn specific_failure_status(status: &str) -> bool {
         "unsubmitted" | "failed" | "transitioned-without-submission"
     )
 }
+
+#[cfg(test)]
+#[path = "away/architecture_tests.rs"]
+mod architecture_tests;
 
 #[cfg(test)]
 mod tests {

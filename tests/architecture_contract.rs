@@ -5,11 +5,75 @@ mod support;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeMap,
     fs,
     io::Write,
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
 };
+
+#[cfg(unix)]
+fn away_stubs(root: &Path) -> (PathBuf, PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let codex = root.join("stub-codex");
+    let tmux = root.join("stub-tmux");
+    fs::write(
+        &codex,
+        "#!/bin/sh\nprintf probe >> native-probes\necho '-c -C --add-dir --ephemeral -m'\n",
+    )
+    .unwrap();
+    fs::write(&tmux, "#!/bin/sh\nprintf probe >> native-probes\ncase \"$3\" in has-session) exit 1;; new-session) exit 0;; *) exit 2;; esac\n").unwrap();
+    for path in [&codex, &tmux] {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    (codex, tmux)
+}
+
+#[cfg(unix)]
+fn away(root: &Path, agent: &str, work: &str) -> Output {
+    let (codex, tmux) = away_stubs(root);
+    Command::new(env!("CARGO_BIN_EXE_exitbind"))
+        .current_dir(root)
+        .args([
+            "away",
+            "start",
+            agent,
+            &format!(
+                ".exitbind/runs/work-{}.jsonl",
+                work.strip_prefix("smw_").unwrap()
+            ),
+            "--config",
+            "exitbind.json",
+        ])
+        .env("EXITBIND_AWAY_CODEX_BIN", codex)
+        .env("EXITBIND_AWAY_TMUX_BIN", tmux)
+        .output()
+        .unwrap()
+}
+
+fn state_files(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+    fn collect(root: &Path, files: &mut BTreeMap<PathBuf, Vec<u8>>) {
+        for entry in fs::read_dir(root).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                collect(&path, files);
+            } else {
+                files.insert(path.clone(), fs::read(path).unwrap());
+            }
+        }
+    }
+    let mut files = BTreeMap::new();
+    collect(&root.join(".exitbind"), &mut files);
+    files
+}
+
+fn codex_roles(root: &Path) {
+    let mut value = config(root);
+    for name in ["worker", "reviewer"] {
+        value["agents"][name]["runtime"] = json!({"host":"codex","fallback":"none"});
+    }
+    save_config(root, &value);
+}
 
 const CONTRACT: &str = include_str!("fixtures/architecture-contract.json");
 
@@ -144,6 +208,103 @@ fn submit(root: &Path, work: &str, outcome: &str) {
             "--reason",
             "Bounded fixture result",
         ],
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn away_refuses_selected_worker_and_reviewer_before_native_or_state_effects() {
+    for role in ["worker", "reviewer"] {
+        let root = project(&format!("architecture-away-{role}"));
+        codex_roles(&root);
+        select(&root, &serde_json::from_str(CONTRACT).unwrap());
+        let work = begin(&root);
+        submit(&root, &work, "scoped");
+        if role == "reviewer" {
+            submit(&root, &work, "completed");
+            ok(&root, &["work", "check", &work]);
+        }
+        let pending = ok(&root, &["work", "next", &work, "--full"]);
+        assert_eq!(pending["next"]["packet"]["role"], role);
+        assert!(pending["next"]["packet"]["architectureContractSha256"].is_string());
+        let before = state_files(&root);
+        let output = away(&root, role, &work);
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        assert!(String::from_utf8_lossy(&output.stderr).contains("unsupported by away"));
+        assert!(!root.join("native-probes").exists());
+        assert_eq!(state_files(&root), before);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn away_cannot_launch_after_frozen_contract_deselection_replacement_or_source_drift() {
+    for change in ["deselected", "replaced", "source-drift"] {
+        let root = project(&format!("architecture-away-{change}"));
+        codex_roles(&root);
+        let mut contract: Value = serde_json::from_str(CONTRACT).unwrap();
+        select(&root, &contract);
+        let work = begin(&root);
+        submit(&root, &work, "scoped");
+        match change {
+            "deselected" => {
+                let mut value = config(&root);
+                value["project"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("architectureContract");
+                save_config(&root, &value);
+            }
+            "replaced" => {
+                contract["revision"] = json!("replacement");
+                select(&root, &contract);
+            }
+            _ => fs::write(root.join("architecture.json"), "{}").unwrap(),
+        }
+        let before = state_files(&root);
+        let output = away(&root, "worker", &work);
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        let error = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            error.contains(if change == "source-drift" {
+                "architecture contract source changed"
+            } else {
+                "unsupported by away"
+            }),
+            "{error}"
+        );
+        assert!(!root.join("native-probes").exists());
+        assert_eq!(state_files(&root), before);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn away_keeps_absent_contract_and_unselected_proposal_behavior() {
+    let root = project("architecture-away-absent");
+    codex_roles(&root);
+    fs::write(root.join("architecture.json"), CONTRACT).unwrap();
+    let work = begin(&root);
+    submit(&root, &work, "scoped");
+    let before = fs::read(root.join(format!(
+        ".exitbind/runs/work-{}.jsonl",
+        work.strip_prefix("smw_").unwrap()
+    )))
+    .unwrap();
+    let output = away(&root, "worker", &work);
+    assert!(output.status.success(), "{output:?}");
+    assert!(root.join("native-probes").exists());
+    assert!(fs::read_dir(root.join(".exitbind/away"))
+        .unwrap()
+        .next()
+        .is_some());
+    assert_eq!(
+        fs::read(root.join(format!(
+            ".exitbind/runs/work-{}.jsonl",
+            work.strip_prefix("smw_").unwrap()
+        )))
+        .unwrap(),
+        before
     );
 }
 

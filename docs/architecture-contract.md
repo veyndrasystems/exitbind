@@ -79,9 +79,11 @@ configuration. Use the existing run supersede path for approved changes that
 must affect that Work. Historical records are preserved.
 
 `work detail`, `work act` native launch context, the bound SubagentStart hook
-and explicit `work child context` use the same derived slice. The legacy
-`away` prompt does not include this contract slice; use the current Work
-delivery routes when a child needs it. Workers and reviewers receive the
+and explicit `work child context` use the same derived slice. Legacy `away`
+refuses preparation when current configuration selects a contract or the
+assignment carries a frozen contract identity: this adapter does not support
+contract delivery. Use the current Work delivery routes. Absent-contract away
+work keeps its existing behavior. Workers and reviewers receive the
 responsibilities intersecting their assignment's observe/write paths, incident
 dependency directions, associated interfaces and the selected owners' checks.
 They receive no unrelated responsibility summaries or checks. Empty paths

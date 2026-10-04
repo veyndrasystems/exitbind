@@ -163,6 +163,19 @@ pub(crate) fn assert_current(loaded: &Loaded) -> Result<(), String> {
     current(loaded).map(|_| ())
 }
 
+/// Legacy away has no bounded scoped-delivery adapter. A frozen selection
+/// still requires delivery when current configuration has removed it.
+pub(crate) fn away_supported(loaded: &Loaded, assignment: &Value) -> Result<(), String> {
+    if loaded.architecture_contract.is_some()
+        || assignment
+            .get("architectureContractSha256")
+            .is_some_and(|identity| !identity.is_null())
+    {
+        return Err("Architecture Contract delivery is unsupported by away; use the current Work delivery routes".into());
+    }
+    Ok(())
+}
+
 /// The run already owns frozen configuration and plan evidence. Keep only the
 /// optional source selection there, never another architecture acceptance log.
 pub(crate) fn bind_plan(loaded: &Loaded, plan: &mut Value) -> Result<(), String> {
