@@ -264,6 +264,14 @@ fn controlled_option_refuses_other_versions_project_config_and_capability_overri
     assert!(String::from_utf8_lossy(&override_attempt.stderr).contains("sandbox overrides"));
     let old = invoke(&[]);
     assert!(!old.status.success());
+    if !cfg!(target_os = "linux") {
+        assert!(
+            String::from_utf8_lossy(&old.stderr).contains("Linux read-only worker"),
+            "{old:?}"
+        );
+        assert!(!f.root.join("provider-started").exists());
+        return;
+    }
     assert!(
         String::from_utf8_lossy(&old.stderr).contains("0.160.0"),
         "{old:?}"
