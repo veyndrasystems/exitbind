@@ -284,3 +284,12 @@ reference defines the role-specific projection and exact expansion references.
 The delayed reference also defines currentness checks and the conservative loop
 boundary; this router stays small so the procedure is loaded only when the
 preservation path is active.
+
+For new marked checked Work, `work check WORK --timeout-ms MS` selects a finite
+1..86,400,000 ms observation limit (default1,800,000). A recorded observation
+failure is separate from check evidence. Read `work detail`: the Lead may choose
+repair only after the observer proves termination; the resulting worker still
+needs its permit, fresh result, observed checks and applicable review. Unknown
+execution/live descendants block retry, repair, acceptance and supersession.
+An identical committed check request replays its exact event without executing
+again. No deadline change, failure record or replay resets spent authority.

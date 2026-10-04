@@ -251,7 +251,8 @@ exitbind run observe-check .exitbind/runs/checked.jsonl \
 
 This local observation runs synchronously in the configured ProductRoot with
 the invoking environment and permissions. It has a 1,800,000 ms (30 minute)
-default deadline; pass a positive `--timeout-ms MS` override when a different
+default deadline; both `work check WORK` and `run observe-check` accept an explicit
+`--timeout-ms MS` from 1 to 86,400,000. Pass a positive override when a different
 bounded deadline is appropriate. It keeps command output off JSON stdout,
 records normal exits and POSIX signals as distinct results, and writes no check
 event when launch, timeout, or durable binding fails. On timeout it terminates
@@ -260,6 +261,24 @@ outside the ledger lock, then Exitbind reacquires the lock and revalidates the
 exact durable binding before append. A local observation is still check
 evidence: review and lead acceptance remain separate. Existing v3 ledgers keep
 the caller-reported `record-check` representation.
+
+New checked starts with an explicit review policy also record
+`checkObservationProtocol: 1`. Their observer appends a bounded admission before
+launch, binding target, subject, inputs, configuration, frozen policy,
+requirement, producer/executable digest and capture/deadline limits. Repeated
+exact requests recover a committed check; they do not execute it twice. Changed
+bindings or limits are refused. An observation/capture/commit failure records
+separate process, deadline, capture, storage and termination facts, never a
+passing check. Stable partial captures retain bounded private state references.
+`work detail` exposes the current Lead choice: an ended attempt may be repaired
+through `work disposition`, a new worker permit/result, fresh checks and any
+required review. An unresolved admission, live descendant or uncertain cleanup
+permits stopping but blocks repair, acceptance, retry and supersession. If
+failure storage is unavailable, the response says no durable failure was
+recorded and returns a bounded inspection route; the admission stays unresolved.
+These additive v8 fields/events require a reader that supports the marker;
+older v8 binaries refuse them. Markerless historical ledgers are unchanged.
+See [observation schema](schema/check-observation-v1.schema.json).
 
 This fragment assumes the worker is pending and has written that fresh result
 file. Use the project's actual command consistently at start and execution.

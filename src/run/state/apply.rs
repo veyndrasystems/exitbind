@@ -8,6 +8,9 @@ pub(super) fn apply_event(state: &mut Value, event: &Value) -> Result<(), String
         Some("govern") => apply_govern(state, event),
         Some("review_policy") => apply_review_policy(state, event),
         Some("check") => check_stage::apply_check(state, event),
+        Some("check_observation" | "check_observation_failed") => {
+            super::check_observation::apply(state, event)
+        }
         Some("protect") => apply_protection(state, event),
         _ => Err("run event action is invalid".into()),
     }
@@ -59,10 +62,12 @@ pub(super) fn apply_govern(state: &mut Value, event: &Value) -> Result<(), Strin
             || assignment["attempt"] != event["attempt"]
             || assignment["role"] != event["role"]
             || event["subjectSha256"] != state["subject"]["sha256"]
-            || state["inputsSha256"]
-                .as_str()
-                .or(prior_input)
-                .is_some_and(|expected| event["inputsSha256"] != expected)
+            || (!(state["checkObservationProtocol"] == crate::run::check_observation::PROTOCOL
+                && event["operation"] == "authorized_repair_recovery_v1")
+                && state["inputsSha256"]
+                    .as_str()
+                    .or(prior_input)
+                    .is_some_and(|expected| event["inputsSha256"] != expected))
         {
             return Err("re-plan is not bound to the current worker assignment".into());
         }

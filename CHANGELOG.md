@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Retain bounded canonical check-observation admission/failure facts and route
+  safe same-Work repair through the Lead, fresh worker result, checks and review.
+  Unresolved effects block retry and supersession. Add ordinary Work deadlines
+  and exact committed-check replay without executing the checker twice.
+
 ## 0.27.2
 
 - Exercise stale-return protection on long native paths and read complete

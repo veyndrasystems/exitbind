@@ -19,9 +19,14 @@ pub(crate) fn project(response: &Value) -> Value {
         .or_else(|| response["next"]["action"].as_str());
     let kind = kind.or_else(|| match forms["state"].as_str() {
         Some("pending_assignment") => Some("spawn"),
-        Some("initial_scope" | "lead_acceptance" | "failed_check" | "pending_review_finding") => {
-            Some("lead_decision")
-        }
+        Some(
+            "initial_scope"
+            | "lead_acceptance"
+            | "failed_check"
+            | "pending_review_finding"
+            | "failed_check_observation"
+            | "unresolved_check_observation",
+        ) => Some("lead_decision"),
         Some("check") => Some("check"),
         Some("done") => Some("done"),
         _ => None,

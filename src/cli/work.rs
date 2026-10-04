@@ -479,11 +479,12 @@ pub(super) fn work_command(l: &config::Loaded, a: &Arguments) -> Result<(), Stri
             print_work_json(&value)
         }
         "check" => {
-            args::assert_options("work check", a, &["config", "json"])?;
+            args::assert_options("work check", a, &["config", "json", "timeout-ms"])?;
             args::assert_positionals("work check", a, 2)?;
-            let result = crate::work::check(
+            let result = crate::work::check_with_timeout(
                 l,
                 positional(a, 1, "work check requires WORK")?,
+                a.options.get("timeout-ms").map(String::as_str),
             )?;
             print_work_result(&result)
         }

@@ -250,6 +250,22 @@ mod tests {
             std::process::id()
         ));
         std::fs::create_dir_all(&root).unwrap();
+        let mut git = std::process::Command::new("git");
+        for key in [
+            "GIT_DIR",
+            "GIT_WORK_TREE",
+            "GIT_COMMON_DIR",
+            "GIT_INDEX_FILE",
+            "GIT_CEILING_DIRECTORIES",
+            "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+        ] {
+            git.env_remove(key);
+        }
+        assert!(git
+            .args(["-C", root.to_str().unwrap(), "init", "--quiet"])
+            .status()
+            .unwrap()
+            .success());
         let config = crate::project::onboarding::init_with_options(
             crate::project::onboarding::InitOptions {
                 product_root: root.to_str().unwrap(),

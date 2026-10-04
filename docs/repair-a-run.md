@@ -21,6 +21,8 @@ response rules in [work mutation results](work-mutation-results.md).
 | What happened | Next action |
 | --- | --- |
 | A check is missing | Have the host execute the exact frozen command and report its actual result for the current worker submission. |
+| Check observation failed | Read `work detail WORK`. An ended attempt exposes a Lead repair disposition; follow its new worker assignment/permit, return fresh work, then check and review. Unresolved execution or live descendants remain blocked from retry or supersession. |
+| Failure storage was unavailable | Keep the admitted Work unresolved; follow the returned inspection route and stop if termination cannot be established. The response is diagnostic evidence, not a durable check or permission. |
 | A check failed | Repair through explicit rework, then submit fresh work, check, and review. A review approval cannot clear the failed report. |
 | Reviewer requested rework | Follow the returned worker assignment. Preserve the earlier documents. |
 | Recorded artifact changed | Inspect its hash and restore the exact legitimate bytes. Do not edit the ledger to approve different bytes. |

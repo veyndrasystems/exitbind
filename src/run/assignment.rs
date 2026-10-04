@@ -231,6 +231,9 @@ fn packet(state: &Value, agent: &Value, upstream: &[Value]) -> Value {
         assignment["reviewPurpose"] = json!("diagnostic");
     }
     if agent["role"] == "lead" {
+        if let Some(observation) = state.get("checkObservation").filter(|v| v.is_object()) {
+            assignment["checkObservation"] = observation.clone();
+        }
         if let Some(pending) = super::disposition::lead_view(state) {
             assignment["pendingDisposition"] = pending;
         }

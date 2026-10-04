@@ -465,6 +465,22 @@ mod tests {
             std::process::id()
         ));
         std::fs::create_dir(&root).unwrap();
+        let mut git = std::process::Command::new("git");
+        for key in [
+            "GIT_DIR",
+            "GIT_WORK_TREE",
+            "GIT_COMMON_DIR",
+            "GIT_INDEX_FILE",
+            "GIT_CEILING_DIRECTORIES",
+            "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+        ] {
+            git.env_remove(key);
+        }
+        assert!(git
+            .args(["-C", root.to_str().unwrap(), "init", "--quiet"])
+            .status()
+            .unwrap()
+            .success());
         let rule = root.join("AGENTS.md");
         std::fs::write(&rule, "stable rule with NATIVE CURRENT CONTEXT text\n").unwrap();
         let configuration = crate::project::onboarding::init_with_options(

@@ -155,6 +155,9 @@ pub fn supersede_with_policy(
         crate::project::git_preflight::refuse_tracked_targets(&loaded.state_root, &targets)?;
         let (_, old_events, old_source) = load_at(loaded, &old)?;
         let old_state = run_state::reduce(&old_events)?;
+        if crate::run::state::check_observation::unresolved(&old_state) {
+            return Err("supersession refused unresolved check effects; no successor may retry uncertain execution".into());
+        }
         if !matches!(old_state["status"].as_str(), Some("running" | "blocked")) {
             return Err("only a running or blocked run can be superseded".into());
         }
@@ -322,6 +325,8 @@ pub fn supersede_with_policy(
             if check_policy.is_some() {
                 event_value["recoveryProtocol"] =
                     json!(crate::run::state::RECOVERY_PROTOCOL_VERSION);
+                event_value["checkObservationProtocol"] =
+                    json!(crate::run::check_observation::PROTOCOL);
             }
             if let Some(basis) = &extension.basis {
                 event_value["basis"] = basis.value();

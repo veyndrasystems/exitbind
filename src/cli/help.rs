@@ -41,7 +41,7 @@ pub(super) fn scoped_help(command: &str, positional: &[String]) -> Option<String
         ["work", "disposition"] => {
             "work disposition WORK ASSIGNMENT --decision repair|defer|reject|supersede --reason TEXT [--repair-boundary TEXT --regression TEXT] [--successor-basis JSON] [--current-binding BINDING] (repair and supersede require both repair terms)"
         }
-        ["work", "check"] => "work check WORK",
+        ["work", "check"] => "work check WORK [--timeout-ms MS] (1..86400000; default1800000)",
         ["work", "usage"] => "work usage WORK [--json] [--config CONFIG] | work usage WORK --apply [--json] [--config CONFIG] < NUMERIC_JSON",
         ["work", "file-serve"] => "work file-serve SESSION --config CONFIG (host-owned stdio MCP transport)",
         ["work", "file"] => "work file prepare WORK ASSIGNMENT | work file read|refresh|edit|inspect SESSION PATH (native workers receive a bound edit tool)",

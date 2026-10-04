@@ -75,7 +75,7 @@ pub(crate) fn act(loaded: &Loaded, work: &str, options: ActOptions<'_>) -> Resul
             if options.outcome.is_some() || options.reason.is_some() {
                 return Err("a check takes no Lead decision".into());
             }
-            check(loaded, work)
+            check_with_timeout(loaded, work, options.timeout_ms)
         }
         Some("lead_decision") => {
             if options.resume {

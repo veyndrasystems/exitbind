@@ -118,11 +118,16 @@ pub(crate) fn full(loaded: &Loaded, work: &str, next: &Value, binding: &str) -> 
             "leadChoiceRequired": false, "choices": [],
             "mechanicalAction": if next["action"] == "check" {
                 json!({"command": command(loaded, vec!["work".into(), "check".into(), work.into()]),
-                    "meaning": "execute only the current frozen applicable check; failure requires a Lead decision"})
+                    "meaning": "execute only the current frozen applicable check; failure requires a Lead decision",
+                    "executionOptions": {"timeoutMs": {"option": "--timeout-ms", "default": 1_800_000, "minimum": 1, "maximum": crate::run::check_observation::MAX_TIMEOUT_MS}, "repeat": "an admitted observation is never automatically retried"}})
             } else { Value::Null }});
     };
     let outcomes = allowed_outcomes(next);
-    let state = if next["packet"].get("pendingDisposition").is_some() {
+    let state = if super::check::unresolved(next) {
+        "unresolved_check_observation"
+    } else if next["packet"]["pendingDisposition"]["kind"] == "check_observation_failed" {
+        "failed_check_observation"
+    } else if next["packet"].get("pendingDisposition").is_some() {
         "pending_review_finding"
     } else if next["action"] == "lead_decision"
         && matches!(
@@ -148,7 +153,13 @@ pub(crate) fn full(loaded: &Loaded, work: &str, next: &Value, binding: &str) -> 
         "leadChoiceRequired": state != "pending_assignment",
         "choices": [],
     });
-    let choices: Vec<Value> = if state == "pending_review_finding" {
+    let choices: Vec<Value> = if state == "unresolved_check_observation" {
+        outcomes
+            .iter()
+            .filter(|v| matches!(**v, "blocked" | "rejected"))
+            .map(|outcome| return_choice(loaded, work, assignment, binding, outcome, outcome))
+            .collect()
+    } else if matches!(state, "pending_review_finding" | "failed_check_observation") {
         let available = next["packet"]["pendingDisposition"]["decisions"]
             .as_array()
             .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>())
@@ -248,6 +259,16 @@ pub(crate) fn full(loaded: &Loaded, work: &str, next: &Value, binding: &str) -> 
                 ],
                 no_input(),
             ));
+        }
+        if state == "failed_check_observation" {
+            choices.extend(
+                outcomes
+                    .iter()
+                    .filter(|outcome| matches!(**outcome, "blocked" | "rejected"))
+                    .map(|outcome| {
+                        return_choice(loaded, work, assignment, binding, outcome, outcome)
+                    }),
+            );
         }
         choices
     } else if state == "failed_check" {
