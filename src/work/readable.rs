@@ -74,6 +74,9 @@ fn read_after_reads(
         .as_object_mut()
         .ok_or("current action unavailable")?
         .remove("current");
+    if let Some(assignment) = canonical["assignment"].as_str().map(str::to_owned) {
+        super::attach_held(loaded, work, &assignment, &mut canonical)?;
+    }
     let binding = super::details::binding(loaded, work, snapshot, &canonical)?;
     let recipient = recipient_context::read(loaded, &canonical)?;
     let sections = grouped_sections(loaded, work, snapshot, &canonical, &binding)?;

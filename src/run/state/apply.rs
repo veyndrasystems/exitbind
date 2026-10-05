@@ -62,8 +62,15 @@ pub(super) fn apply_govern(state: &mut Value, event: &Value) -> Result<(), Strin
             || assignment["attempt"] != event["attempt"]
             || assignment["role"] != event["role"]
             || event["subjectSha256"] != state["subject"]["sha256"]
+            // A marked carried re-plan observes the permitted edit's current
+            // inputs. Its assignment/packet and carried-mutation identity are
+            // validated here and by the governor; the earlier submission's
+            // input hash describes the result being repaired, not this edit.
             || (!(state["checkObservationProtocol"] == crate::run::check_observation::PROTOCOL
-                && event["operation"] == "authorized_repair_recovery_v1")
+                && matches!(
+                    event["operation"].as_str(),
+                    Some("replan" | "authorized_repair_recovery_v1")
+                ))
                 && state["inputsSha256"]
                     .as_str()
                     .or(prior_input)

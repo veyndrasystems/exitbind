@@ -33,6 +33,8 @@ For host-managed native agents, deliver the current complete detail through the 
 
 Preserve the exact user-authorized check command. Run the emitted check action once; `--timeout-ms` selects 1..86,400,000 ms (default1,800,000). Process exit zero is check evidence, not semantic acceptance. A committed identical check request replays its event without another execution. A safely ended observation failure carries the Lead's actual repair/blocked/rejected choices. Unknown execution or live descendants block retry, repair, acceptance and supersession. Neither a deadline change nor replay resets spent authority.
 
+When a worker needs governor recovery, follow `actionForms.recovery` and its current choices from fresh detail. Supply the Lead's meaningful re-plan or exact new evidence; recovery keeps spent authority. After recovery, return a selected `recovery.heldResults` entry through its emitted command to preserve retained bytes, then check and review the current result. A blocked governor stays blocked.
+
 A review finding is evidence, not a requirement. Consume the Lead's current disposition forms; repair/supersede retain explicit repair boundaries and regressions, and supersede retains its basis decision. A deferred or rejected finding is not approval. For a clear defect within accepted scope, choose the supported repair without asking the owner again; changed authority, scope, review choice or irreversible decisions need the owner. Architecture detail carries the selected role slice and exact provenance; proposals and previews are not approval, and a contract grants no permission. Custom profiles remain custom.
 
 ## Completion

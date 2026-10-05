@@ -146,8 +146,8 @@ instead of opening a public issue. For ordinary bugs and proposals, include the
 affected workflow, expected result, observed result, and the narrowest useful
 reproduction.
 
-## Selected maintenance assignment
+## Historical maintenance evidence
 
-For the explicitly assigned v0.25.1 reviewer-handoff and R14 closeout, use
-[the maintenance entry](docs/maintenance/v0.25.1/README.md). It is contributor
-work, not an installed-user workflow or an automatic instruction for every task.
+The [v0.25.1 maintenance entry](docs/maintenance/v0.25.1/README.md) preserves
+its assigned reviewer-handoff and R14 closeout history. It is an archive, not a
+current contributor task.

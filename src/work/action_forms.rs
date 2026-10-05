@@ -3,6 +3,8 @@
 use crate::config::Loaded;
 use serde_json::{json, Value};
 
+mod repair;
+
 fn command(loaded: &Loaded, mut suffix: Vec<String>) -> Value {
     suffix.push("--config".into());
     let command = super::response_recovery::bounded_argv(suffix, loaded.path.to_str(), 16 * 1024);
@@ -112,6 +114,7 @@ pub(crate) fn project(loaded: &Loaded, work: &str, next: &Value, binding: &str) 
         native.remove("inspect");
         native.insert("requiresDetail".into(), json!(true));
     }
+    repair::compact(&mut result);
     result["detail"] = json!({
         "route": "current.details.grouped",
         "binding": binding,
@@ -339,5 +342,6 @@ pub(crate) fn full(loaded: &Loaded, work: &str, next: &Value, binding: &str) -> 
             "placeholders": ["OPERATION"], "required": true,
             "meaning": "obtain allowed:true before editing; this form grants no host permission"});
     }
+    repair::attach(loaded, work, assignment, binding, next, &mut result);
     result
 }
