@@ -530,7 +530,7 @@ fn known_and_revoked_detail_routes_keep_canonical_goal_and_export_bounds() {
     let result = fixture.json(&["work", "closeout", &accepted], b"");
     assert_ne!(result["goalProgress"]["overall"], "completed");
     assert_eq!(result["workAcceptance"]["state"], "accepted");
-    assert!(serde_json::to_vec(&result).unwrap().len() + 1 <= 8 * 1024);
+    assert!(serde_json::to_vec(&result).unwrap().len() < 8 * 1024);
     let compact = fixture.json(&["work", "next", &accepted], b"");
     assert_eq!(
         compact["current"]["completion"]["goalProgress"]["overall"],
