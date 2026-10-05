@@ -429,6 +429,7 @@ mod tests {
         use crate::{config, run};
         use std::fs;
 
+        let marked = crate::producer::exitbind_surface();
         for fault in [1, 2, 3] {
             let root = std::env::temp_dir().join(format!(
                 "exitbind-post-append-{}-{fault}",
@@ -471,7 +472,7 @@ mod tests {
                 None,
                 None,
                 None,
-                Some("required"),
+                marked.then_some("required"),
             )
             .unwrap();
             let artifact_dir = root.join(format!("{state}/artifacts"));
@@ -514,12 +515,21 @@ mod tests {
                 1
             );
             assert_eq!(observed["event"]["result"]["code"], 0);
-            assert!(observed["event"]["observationEventSha256"].is_string());
-            let replay = run::check_observation::committed_replay(&loaded, &ledger, None)
-                .unwrap()
-                .unwrap();
-            assert_eq!(replay["event"], observed["event"]);
-            assert_eq!(replay["recovered"], true);
+            assert_eq!(
+                observed["event"]["observationEventSha256"].is_string(),
+                marked
+            );
+            let replay = run::check_observation::committed_replay(&loaded, &ledger, None).unwrap();
+            if marked {
+                let replay = replay.unwrap();
+                assert_eq!(replay["event"], observed["event"]);
+                assert_eq!(replay["recovered"], true);
+            } else {
+                assert!(replay.is_none());
+                assert!(!events
+                    .iter()
+                    .any(|event| event["action"] == "check_observation"));
+            }
             if fault & 1 != 0 {
                 assert!(observed["projectionError"]
                     .as_str()
