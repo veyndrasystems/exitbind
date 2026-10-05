@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Integrate optional Architecture Contract history and add reviewed-source
+  selection preview/apply through the existing project owner, with exact pins,
+  drift refusal, returned action and custom configuration preservation.
+
 - Retain bounded canonical check-observation admission/failure facts and route
   safe same-Work repair through the Lead, fresh worker result, checks and review.
   Unresolved effects block retry and supersession. Add ordinary Work deadlines

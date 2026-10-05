@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
+mod adoption;
 mod checks;
+pub(crate) use adoption::select;
 mod validation;
 
 const MAX_SOURCE_BYTES: u64 = 64 * 1024;

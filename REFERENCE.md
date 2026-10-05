@@ -599,7 +599,10 @@ unavailable observation is reported as unavailable, not projected as current.
 
 An optional `project.architectureContract` selection pins a project-relative
 JSON source, exact SHA256 and revision. `project architecture --json` reads the
-current contract; `project architecture check --json` evaluates its bounded
+current contract. `project architecture select SOURCE --decision reviewed
+--reason TEXT --json` previews an already reviewed selection and returns its
+exact bound apply argv, preserving custom configuration. A digest is not review
+evidence. `project architecture check --json` evaluates its bounded
 literal file assertions and returns nonzero for failure. Current assignment
 detail and native role context receive only the applicable slice. See
 [Architecture Contract](docs/architecture-contract.md) for the format,

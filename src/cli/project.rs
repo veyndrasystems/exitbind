@@ -6,6 +6,38 @@ use crate::{config::Loaded, project::context};
 pub(super) fn command(loaded: &Loaded, arguments: &Arguments) -> Result<(), String> {
     let action = arguments.positional.first().map(String::as_str);
     if action == Some("architecture") {
+        if arguments.positional.get(1).map(String::as_str) == Some("select") {
+            args::assert_options(
+                "project architecture select",
+                arguments,
+                &[
+                    "config",
+                    "json",
+                    "decision",
+                    "reason",
+                    "current-binding",
+                    "apply",
+                ],
+            )?;
+            args::assert_positionals("project architecture select", arguments, 3)?;
+            let value = crate::project::architecture::select(
+                loaded,
+                &arguments.positional[2],
+                arguments
+                    .options
+                    .get("decision")
+                    .map(String::as_str)
+                    .unwrap_or(""),
+                arguments
+                    .options
+                    .get("reason")
+                    .map(String::as_str)
+                    .unwrap_or(""),
+                arguments.options.get("current-binding").map(String::as_str),
+                arguments.flags.contains_key("apply"),
+            )?;
+            return print_json(&value);
+        }
         args::assert_options("project architecture", arguments, &["config", "json"])?;
         let checking = match arguments.positional.get(1).map(String::as_str) {
             None => {
@@ -16,7 +48,7 @@ pub(super) fn command(loaded: &Loaded, arguments: &Arguments) -> Result<(), Stri
                 args::assert_positionals("project architecture check", arguments, 2)?;
                 true
             }
-            _ => return Err("project architecture accepts only check".into()),
+            _ => return Err("project architecture accepts check or select SOURCE".into()),
         };
         let value = if checking {
             crate::project::architecture::check(loaded)?

@@ -64,6 +64,10 @@ its applicable responsibilities, dependency directions, interfaces and checks
 with exact source/configuration provenance. Use that current slice as context;
 the Lead may propose changes through the existing approval process. A contract
 grants no authority and an unselected proposal is not current architecture.
+For an already reviewed project selection, use `exitbind project architecture
+select SOURCE --decision reviewed --reason TEXT --json --config CONFIG`, then
+consume its returned bound `apply.command`. Preview grants no approval and
+executes no checker; source/configuration drift requires a fresh preview.
 Small direct work needs no architecture configuration. `exitbind project
 architecture check --json` evaluates bounded literal file checks only when
 explicitly invoked or included in the existing declared Work check command.

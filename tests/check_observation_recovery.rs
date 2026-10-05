@@ -453,6 +453,36 @@ fn live_descendant_with_closed_streams_remains_blocked_and_is_owned_by_fixture()
     }
     let f =
         Fixture::new("sleep 10 >/dev/null 2>&1 & printf '%s' $! > .exitbind/descendant; exit 0\n");
+    // The combined candidate must retain this blocker with a selected contract.
+    fs::write(f.root.join("architecture.json"), json!({"version": 1, "revision": "live-effect-v1",
+        "responsibilities": [{"id": "checker", "summary": "owned checker", "paths": ["checker.sh"]}],
+        "dependencies": [], "interfaces": [], "checks": []}).to_string()).unwrap();
+    let preview = f.ok(
+        &[
+            "project",
+            "architecture",
+            "select",
+            "architecture.json",
+            "--decision",
+            "reviewed",
+            "--reason",
+            "fixture project review",
+            "--json",
+        ],
+        b"",
+    );
+    let args = preview["apply"]["command"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect::<Vec<_>>();
+    let applied = support::git_topology::command(args[0])
+        .args(&args[1..])
+        .current_dir(&f.root)
+        .output()
+        .unwrap();
+    assert!(applied.status.success(), "{applied:?}");
     let work = f.begin();
     let output = f.call(&["work", "check", &work], b"");
     let pid: i32 = fs::read_to_string(f.root.join(".exitbind/descendant"))

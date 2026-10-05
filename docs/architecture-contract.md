@@ -6,6 +6,32 @@ interfaces and deterministic checks. A small direct task needs no contract or
 governed run. This capability expresses the project's architecture; it does
 not prescribe a style or relocate application code.
 
+Use the existing project decision process to review the intended source, then
+preview its selection:
+
+```sh
+exitbind project architecture select docs/architecture.json \
+  --decision reviewed --reason "PROJECT_REVIEW_DECISION" --json --config CONFIG
+```
+
+The preview validates the source/schema, computes its exact revision and digest,
+and shows the current/proposed selection and responsibility/check summary. It
+writes nothing and launches no checker. Execute its returned `apply.command`
+argv to select those bytes. The command already includes the exact executable,
+custom configuration and current binding; no hash copying is needed. The
+`reviewed` declaration and reason describe the existing project decision. They
+are caller statements, not proof that a human reviewed the source.
+
+Apply revalidates source and configuration, refuses stale/cross-project bindings
+or competing selection, and preserves other custom configuration fields and
+file permissions. A successful result returns a refreshed apply command that
+is a byte-preserving no-op while that selection/configuration stays current.
+The consumed preview is stale after a write; refresh preview after any change.
+Unsafe, missing, oversized or invalid sources are refused. Apply uses POSIX
+file locking on supported native hosts. Selection grants no execution rights
+and cannot change the frozen configuration of an active Work; approved changes
+use its existing supersession path.
+
 The existing project configuration selects one source under ProductRoot:
 
 ```json
@@ -61,8 +87,16 @@ graph. Associate an `excludes` assertion with a forbidden dependency, or a
 `contains` assertion with an interface, when that exact literal discriminates
 the behavior the project needs to preserve.
 
-When governed evidence is needed, include this read-only command in the
-existing Work's explicitly chosen check command. Its stdout alone is not
+When governed evidence is needed, explicitly choose this command through the
+existing Work check/preservation owners. For an already authorized external
+linter or dependency test, compose commands with `&&`, for example
+`APPROVED_PROJECT_CHECK && exitbind project architecture check --json --config CONFIG`.
+An earlier failing exit stops the compound check; never replace it with a
+semicolon that could mask failure. Repository command suggestions remain
+proposals until authorized. Separate preservation requirements keep their own
+explicit frozen check where they discriminate a different obligation.
+
+Its stdout alone is not
 acceptance; the existing check, review and Lead acceptance owners remain the
 [authority boundary](../REFERENCE.md#authority-boundary). Contract data contains
 no executable command field.

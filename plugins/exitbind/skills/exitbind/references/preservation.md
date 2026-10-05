@@ -249,3 +249,11 @@ needs its permit, fresh result, observed checks and applicable review. Unknown
 execution/live descendants block retry, repair, acceptance and supersession.
 An identical committed check request replays its exact event without executing
 again. No deadline change, failure record or replay resets spent authority.
+
+For a selected Architecture Contract, use the existing authorized check command
+or a discriminating preservation requirement. An explicitly authorized external
+linter/dependency test may compose with `exitbind project architecture check
+--json --config CONFIG` using `&&`; preserve an earlier nonzero exit. Contract
+files contain no executable command authority. Select already reviewed source
+through `project architecture select` and its returned bound apply argv; a new
+selection requires supported supersession before it governs an existing Work.
