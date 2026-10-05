@@ -526,7 +526,9 @@ fn unrepresentable_output_refuses_before_write_and_representable_long_output_rep
 fn long_config_routes_require_exact_arguments_and_terminal_output_stays_bounded() {
     let parent = support::temp("closeout-long-path");
     let mut root = parent.clone();
-    for _ in 0..20 {
+    // Five components keep macOS file paths practical while the exact
+    // executable/config argv still exceeds closeout's 768-byte budget.
+    for _ in 0..5 {
         root.push("segment".repeat(18));
     }
     fs::create_dir_all(&root).unwrap();
