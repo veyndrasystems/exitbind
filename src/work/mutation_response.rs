@@ -420,8 +420,8 @@ mod tests {
         let response = json!({"observationFailure": {"eventSha256": sha,
             "action": "check_observation_failed", "observation": {"facts": {
                 "process": {"kind": "signal", "signal": 15}, "processStarted": true,
-                "groupEnded": true, "capture": "incomplete", "captureAvailability": "partial",
-                "deadlineExceeded": true, "termination": "ended", "storageStage": "capture",
+                "groupEnded": true, "captureReadersEnded": false, "capture": "incomplete", "captureAvailability": "partial",
+                "deadlineExceeded": true, "termination": "unknown", "storageStage": "capture",
                 "diagnostic": "界".repeat(1024), "partialCaptures": [{"path": "界".repeat(1024)}, {"path": "界".repeat(1024)}]
             }}}, "next": {"action": "lead_decision"}});
         let compact = bounded(
@@ -440,7 +440,11 @@ mod tests {
         );
         assert_eq!(
             compact["observationFailure"]["facts"]["termination"],
-            "ended"
+            "unknown"
+        );
+        assert_eq!(
+            compact["observationFailure"]["facts"]["captureReadersEnded"],
+            false
         );
         assert_eq!(compact["observationFailure"]["requiresExpansion"], true);
         assert_eq!(compact["nextAction"]["command"][5], sha);

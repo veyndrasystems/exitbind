@@ -270,6 +270,11 @@ exact requests recover a committed check; they do not execute it twice. Changed
 bindings or limits are refused. An observation/capture/commit failure records
 separate process, deadline, capture, storage and termination facts, never a
 passing check. Stable partial captures retain bounded private state references.
+`groupEnded` measures the owned process group separately from
+`captureReadersEnded`; uninspectably unfinished readers keep termination
+unknown even after that group ends. Marked observation also requires the
+frozen configuration and current selected contract before launch, commit and
+committed replay.
 `work detail` exposes the current Lead choice: an ended attempt may be repaired
 through `work disposition`, a new worker permit/result, fresh checks and any
 required review. An unresolved admission, live descendant or uncertain cleanup

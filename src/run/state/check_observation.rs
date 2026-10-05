@@ -120,6 +120,7 @@ fn valid_facts(value: &Value) -> bool {
             "process",
             "processStarted",
             "groupEnded",
+            "captureReadersEnded",
             "captureAvailability",
             "durationMs",
             "capture",
@@ -135,8 +136,11 @@ fn valid_facts(value: &Value) -> bool {
     ) && process(&value["process"])
         && value["processStarted"].is_boolean()
         && value["groupEnded"].is_boolean()
+        && value["captureReadersEnded"].is_boolean()
         && (value["termination"] != "ended"
-            || (value["groupEnded"] == true && value["cleanupErrorCount"] == 0))
+            || (value["groupEnded"] == true
+                && value["captureReadersEnded"] == true
+                && value["cleanupErrorCount"] == 0))
         && matches!(
             value["captureAvailability"].as_str(),
             Some("complete" | "partial" | "unavailable")
@@ -178,9 +182,13 @@ pub(super) fn apply(state: &mut Value, event: &Value) -> Result<(), String> {
         let policy = crate::run::active_check_policy(state, binding["requirementId"].as_str())?;
         if binding["runId"] != state["runId"]
             || binding["subjectSha256"] != state["subject"]["sha256"]
+            || binding["configSha256"] != state["configSha256"]
             || binding["checkCommandSha256"] != policy.command_sha256
         {
-            return Err("check observation does not match current policy or subject".into());
+            return Err(
+                "check observation does not match frozen configuration, current policy or subject"
+                    .into(),
+            );
         }
         state["checkObservation"] = event["observation"].clone();
         state["checkObservation"]["eventSha256"] = event["eventSha256"].clone();

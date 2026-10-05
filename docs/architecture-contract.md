@@ -26,7 +26,11 @@ Apply revalidates source and configuration, refuses stale/cross-project bindings
 or competing selection, and preserves other custom configuration fields and
 file permissions. A successful result returns a refreshed apply command that
 is a byte-preserving no-op while that selection/configuration stays current.
-The consumed preview is stale after a write; refresh preview after any change.
+If another selection/configuration/source change wins before the response,
+`applied_current_changed` preserves the confirmed write effect and returns only
+a read-only inspection command. It never rebinds the old selection intent to
+that competing configuration. The consumed preview is stale after a write;
+refresh preview after any change.
 Unsafe, missing, oversized or invalid sources are refused. Apply uses POSIX
 file locking on supported native hosts. Selection grants no execution rights
 and cannot change the frozen configuration of an active Work; approved changes
@@ -111,6 +115,9 @@ in configuration. A changed source with an unchanged pin is refused; an
 existing governed Work cannot adopt a new selection in place of its frozen
 configuration. Use the existing run supersede path for approved changes that
 must affect that Work. Historical records are preserved.
+New marked check observations refuse configuration or selected-source drift
+before admission or execution on both Work and direct observation routes;
+drift during execution records a non-check observation failure.
 
 `work detail`, `work act` native launch context, the bound SubagentStart hook
 and explicit `work child context` use the same derived slice. Legacy `away`

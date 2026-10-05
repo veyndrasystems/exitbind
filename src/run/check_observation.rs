@@ -6,6 +6,20 @@ use super::*;
 pub(crate) const PROTOCOL: u64 = 1;
 pub(crate) const MAX_TIMEOUT_MS: u64 = 86_400_000;
 
+/// New marked observations execute only the run's frozen configuration and
+/// its still-current selected contract. Historical runs retain drift warnings.
+pub(super) fn assert_current(loaded: &Loaded, state: &Value) -> Result<(), String> {
+    if state["checkObservationProtocol"] != PROTOCOL {
+        return Ok(());
+    }
+    if state["configSha256"] != hash::text(&loaded.source)
+        || fs::read_to_string(&loaded.path).map_err(|e| e.to_string())? != loaded.source
+    {
+        return Err("check observation requires the frozen current configuration; inspect the Work and use authorized supersession for a changed configuration".into());
+    }
+    crate::project::architecture::assert_current(loaded)
+}
+
 pub(crate) fn timeout(value: Option<&str>) -> Result<u64, String> {
     let value = value
         .map(|v| parse_positive("--timeout-ms", v))
@@ -42,6 +56,7 @@ pub(super) fn admit(
     if state["checkObservationProtocol"] != PROTOCOL {
         return Ok(None);
     }
+    assert_current(loaded, state)?;
     let details = json!({"binding": identity, "timeoutMs": timeout_ms,
         "perStreamBytes": crate::run_value::MAX_CAPTURE_BYTES, "combinedBytes": 16 * 1_048_576,
         "state": "running"});
@@ -179,6 +194,7 @@ pub(super) fn replay_for_operation(
     {
         return Ok(None);
     }
+    assert_current(loaded, &state)?;
     let policy = active_check_policy(&state, binding["requirementId"].as_str())?;
     if binding["observerExecutableSha256"] != crate::producer::build_identity()["executableSha256"]
         || admission["producer"] != crate::producer::evidence_for_version(8)

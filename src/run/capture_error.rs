@@ -26,6 +26,7 @@ pub(crate) struct ObservationError {
     pub(super) cleanup_errors: Vec<String>,
     pub(super) remaining_paths: Vec<PathBuf>,
     pub(super) deadline_exceeded: bool,
+    pub(super) capture_readers_ended: bool,
     pub(super) partial_captures: Vec<Value>,
 }
 
@@ -37,6 +38,7 @@ impl ObservationError {
             cleanup_errors: Vec::new(),
             remaining_paths: Vec::new(),
             deadline_exceeded: false,
+            capture_readers_ended: true,
             partial_captures: Vec::new(),
         }
     }
@@ -109,6 +111,7 @@ impl ObservationError {
             "process": result,
             "processStarted": self.outcome.process_started,
             "groupEnded": self.outcome.group_ended,
+            "captureReadersEnded": self.capture_readers_ended,
             "captureAvailability": if self.partial_captures.is_empty() { "unavailable" } else { "partial" },
             "durationMs": self.outcome.duration_ms,
             "capture": match self.outcome.capture { CaptureDisposition::Disabled => "disabled", CaptureDisposition::Complete { .. } => "complete", CaptureDisposition::Failed => "incomplete" },
@@ -116,7 +119,7 @@ impl ObservationError {
             "partialCaptures": self.partial_captures,
             "storageStage": "capture",
             "storage": "not_committed",
-            "termination": if self.outcome.group_ended && self.cleanup_errors.is_empty() { "ended" } else { "unknown" },
+            "termination": if self.outcome.group_ended && self.capture_readers_ended && self.cleanup_errors.is_empty() { "ended" } else { "unknown" },
             "diagnostic": self.message.chars().filter(|c| !c.is_control()).take(1024).collect::<String>(),
             "cleanupErrorCount": self.cleanup_errors.len(),
             "remainingOwnedPathCount": self.remaining_paths.len(),

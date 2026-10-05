@@ -441,7 +441,18 @@ fn authorized_compound_check_preserves_earlier_failing_exit_and_launches_no_late
 fn applied_new_selection_cannot_be_silently_adopted_by_active_frozen_work() {
     let f = Fixture::new(false);
     f.select();
-    let work = f.begin(&f.architecture_command());
+    let work = f.begin(&format!(
+        "printf launched > .exitbind/check-launched; {}",
+        f.architecture_command()
+    ));
+    let ledger = format!(".exitbind/runs/work-{}.jsonl", &work[4..]);
+    let original = fs::read(f.root.join(&ledger)).unwrap();
+    let events = String::from_utf8(original.clone())
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    let target = events.last().unwrap()["eventSha256"].as_str().unwrap();
     let mut revised = contract();
     revised["revision"] = json!("reviewed-core-v2");
     fs::write(f.root.join("architecture.json"), revised.to_string()).unwrap();
@@ -451,5 +462,169 @@ fn applied_new_selection_cannot_be_silently_adopted_by_active_frozen_work() {
     assert!(detail["effectiveAction"]["warnings"]
         .to_string()
         .contains("config_drift"));
-    assert!(!f.call(&["work", "check", &work], b"").status.success());
+    for args in [
+        vec!["work", "check", &work],
+        vec![
+            "run",
+            "observe-check",
+            &ledger,
+            "--target",
+            target,
+            "--json",
+        ],
+    ] {
+        let refused = f.call(&args, b"");
+        assert!(!refused.status.success(), "{refused:?}");
+        assert!(
+            String::from_utf8_lossy(&refused.stderr).contains("frozen current configuration")
+                || String::from_utf8_lossy(&refused.stdout)
+                    .contains("frozen current configuration")
+        );
+        assert_eq!(fs::read(f.root.join(&ledger)).unwrap(), original);
+        assert!(!f.root.join(".exitbind/check-launched").exists());
+    }
+}
+
+#[test]
+fn marked_work_and_direct_observation_refuse_changed_selected_source_before_effects() {
+    let f = Fixture::new(false);
+    f.select();
+    let work = f.begin(&format!(
+        "printf launched > .exitbind/check-launched; {}",
+        f.architecture_command()
+    ));
+    let ledger = format!(".exitbind/runs/work-{}.jsonl", &work[4..]);
+    let original = fs::read(f.root.join(&ledger)).unwrap();
+    let events = String::from_utf8(original.clone())
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    let target = events.last().unwrap()["eventSha256"].as_str().unwrap();
+    let mut changed = contract();
+    changed["revision"] = json!("unselected-new-revision");
+    fs::write(f.root.join("architecture.json"), changed.to_string()).unwrap();
+    for args in [
+        vec!["work", "check", &work],
+        vec![
+            "run",
+            "observe-check",
+            &ledger,
+            "--target",
+            target,
+            "--json",
+        ],
+    ] {
+        let refused = f.call(&args, b"");
+        assert!(!refused.status.success(), "{refused:?}");
+        assert_eq!(fs::read(f.root.join(&ledger)).unwrap(), original);
+        assert!(!f.root.join(".exitbind/check-launched").exists());
+    }
+}
+
+#[test]
+fn selected_source_changed_during_observation_records_failure_without_check_credit() {
+    let f = Fixture::new(false);
+    f.select();
+    let work = f.begin("printf changed > architecture.json; printf observed");
+    let refused = f.call(&["work", "check", &work], b"");
+    assert!(!refused.status.success(), "{refused:?}");
+    let failure = parse(&refused);
+    assert_eq!(failure["checkRecorded"], false);
+    assert_eq!(failure["observationFailure"]["facts"]["process"]["code"], 0);
+    assert_eq!(
+        failure["observationFailure"]["facts"]["storageStage"],
+        "commit"
+    );
+    let ledger = format!(".exitbind/runs/work-{}.jsonl", &work[4..]);
+    let events = fs::read_to_string(f.root.join(ledger))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(events.iter().filter(|e| e["action"] == "check").count(), 0);
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e["action"] == "check_observation_failed")
+            .count(),
+        1
+    );
+    // Canonical reduction independently rejects a rehashed admission that
+    // proposes another configuration, even without the runtime preflight.
+    let index = events
+        .iter()
+        .position(|e| e["action"] == "check_observation")
+        .unwrap();
+    let mut proposal = events[index].clone();
+    proposal["observation"]["binding"]["configSha256"] = json!("0".repeat(64));
+    let object = proposal.as_object_mut().unwrap();
+    object.remove("eventSha256");
+    use sha2::{Digest, Sha256};
+    proposal["eventSha256"] = json!(format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(&proposal).unwrap())
+    ));
+    let mut prefix = events[..index].to_vec();
+    prefix.push(proposal);
+    let proposed_ledger = ".exitbind/runs/mismatched-config.jsonl";
+    fs::write(
+        f.root.join(proposed_ledger),
+        prefix
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n",
+    )
+    .unwrap();
+    let invalid = f.call(&["run", "inspect", proposed_ledger, "--json"], b"");
+    assert!(!invalid.status.success(), "{invalid:?}");
+    assert!(parse(&invalid)["error"]
+        .as_str()
+        .unwrap()
+        .contains("frozen configuration"));
+}
+
+#[test]
+fn committed_observation_replay_refuses_changed_selected_source_without_execution() {
+    let f = Fixture::new(false);
+    f.select();
+    fs::write(f.root.join("src/core/mod.rs"), "APPROVED").unwrap();
+    let work = f.begin(&format!(
+        "printf launched >> .exitbind/check-count; {}",
+        f.architecture_command()
+    ));
+    f.ok(&["work", "check", &work], b"");
+    let ledger = format!(".exitbind/runs/work-{}.jsonl", &work[4..]);
+    let original = fs::read(f.root.join(&ledger)).unwrap();
+    let check: Value = serde_json::from_str(
+        String::from_utf8(original.clone())
+            .unwrap()
+            .lines()
+            .last()
+            .unwrap(),
+    )
+    .unwrap();
+    let target = check["targetEventSha256"].as_str().unwrap();
+    fs::write(f.root.join("architecture.json"), "changed selected source").unwrap();
+    for args in [
+        vec!["work", "check", &work],
+        vec![
+            "run",
+            "observe-check",
+            &ledger,
+            "--target",
+            target,
+            "--json",
+        ],
+    ] {
+        let refused = f.call(&args, b"");
+        assert!(!refused.status.success(), "{refused:?}");
+        assert_eq!(fs::read(f.root.join(&ledger)).unwrap(), original);
+        assert_eq!(
+            fs::read(f.root.join(".exitbind/check-count")).unwrap(),
+            b"launched"
+        );
+    }
 }

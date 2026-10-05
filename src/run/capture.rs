@@ -460,6 +460,13 @@ fn capture_to_files(
                 cleanup_errors,
             );
             failure.deadline_exceeded = timed_out;
+            // An escaped descendant may hold a pipe after the owned group has
+            // ended. Detached readers leave that effect uninspectably live.
+            failure.capture_readers_ended = stream_results.len() == 2;
+            failure.outcome.group_ended = i32::try_from(child.id())
+                .ok()
+                .and_then(|pid| process_group_exists(pid).ok())
+                == Some(false);
             failure.partial_captures = partial_captures;
             return Err(failure);
         }

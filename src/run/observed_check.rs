@@ -74,6 +74,7 @@ pub fn observe_check_for_requirement(
                     "run has already reached a terminal state; no mutation was made".into(),
                 );
             }
+            check_observation::assert_current(loaded, &state)?;
             let warning = action_drift_warning(loaded, &state)?;
             crate::run::artifact::assert_current(loaded, &state)?;
             predecessor(loaded, &events[0])?;
@@ -176,6 +177,7 @@ pub fn observe_check_for_requirement(
         {
             return Err("run changed while observing; this check result was not recorded".into());
         }
+        check_observation::assert_current(loaded, &current_state)?;
         if admission.is_some()
             && (fs::read_to_string(&loaded.path).map_err(|e| e.to_string())? != loaded.source
                 || current_state["inputsSha256"] != identity["inputsSha256"]
@@ -315,7 +317,7 @@ pub fn observe_check_for_requirement(
     POST_APPEND_FAULT.with(|fault| fault.set(0));
     if let Err(error) = &committed {
         if admission.is_some() {
-            let facts = json!({"process": result, "processStarted": true, "groupEnded": capture.group_ended, "captureAvailability": "complete", "durationMs": capture.duration_ms, "capture": "complete", "storage": "not_committed", "storageStage": "commit", "deadlineExceeded": false, "partialCaptures": partial_captures,
+            let facts = json!({"process": result, "processStarted": true, "groupEnded": capture.group_ended, "captureReadersEnded": true, "captureAvailability": "complete", "durationMs": capture.duration_ms, "capture": "complete", "storage": "not_committed", "storageStage": "commit", "deadlineExceeded": false, "partialCaptures": partial_captures,
                 "termination": if capture.group_ended && cleanup.is_ok() { "ended" } else { "unknown" },
                 "diagnostic": error.chars().filter(|c| !c.is_control()).take(1024).collect::<String>(),
                 "cleanupErrorCount": if cleanup.is_ok() { 0 } else { 1 }, "remainingOwnedPathCount": 0});

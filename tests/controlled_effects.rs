@@ -292,6 +292,14 @@ fn controlled_option_refuses_other_versions_project_config_and_capability_overri
         assert!(!f.root.join("provider-started").exists());
         return;
     }
+    if String::from_utf8_lossy(&old.stderr)
+        .contains("controlled effects do not support system or managed Codex configuration")
+        && std::env::var("EXITBIND_TEST_CONTROLLED_SYSTEM_CONFIG_UNAVAILABLE").as_deref() == Ok("1")
+    {
+        assert!(!f.root.join("provider-started").exists());
+        eprintln!("COVERAGE UNAVAILABLE: controlled version/project-config subcases: system or managed Codex configuration preempted them; earlier sandbox/permit refusals and no provider spawn were exercised");
+        return;
+    }
     assert!(
         String::from_utf8_lossy(&old.stderr).contains("0.160.0"),
         "{old:?}"

@@ -3,6 +3,11 @@
 use super::*;
 use std::fs;
 
+#[cfg(test)]
+thread_local! {
+    static AFTER_WRITE: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
+}
+
 pub(crate) fn select(
     loaded: &Loaded,
     source: &str,
@@ -110,15 +115,57 @@ pub(crate) fn select(
         &root,
     )?;
     report["state"] = json!("applied");
+    report["effect"] = json!("applied");
     report["configurationSha256"] = json!(hash::text(&serialized));
-    let current = crate::config::load(loaded.path.to_str())?;
-    assert_current(&current)
-        .map_err(|e| format!("selection was written but current source validation failed: {e}"))?;
-    // Return a fresh no-op action; the consumed old preview remains stale.
-    let refreshed = select(&current, source, decision, reason, None, false)?;
     report["appliedBinding"] = report["currentBinding"].clone();
-    report["currentBinding"] = refreshed["currentBinding"].clone();
-    report["apply"] = refreshed["apply"].clone();
+    #[cfg(test)]
+    {
+        let callback = AFTER_WRITE.with(|hook| hook.borrow_mut().take());
+        if let Some(callback) = callback {
+            callback();
+        }
+    }
+    // Rename replaces the locked inode. Another legitimate writer can then
+    // win; never rebind this old reviewed intent to its new configuration.
+    let refreshed = (|| {
+        if fs::read_to_string(&loaded.path).map_err(|e| e.to_string())? != serialized {
+            return Err("configuration changed after selection was applied".to_string());
+        }
+        let current = crate::config::load(loaded.path.to_str())?;
+        if current.source != serialized {
+            return Err("configuration changed while reloading applied selection".into());
+        }
+        assert_current(&current)?;
+        let preview = select(&current, source, decision, reason, None, false)?;
+        if preview["changed"] != false
+            || preview["selection"] != report["selection"]
+            || preview["configurationSha256"] != hash::text(&serialized)
+        {
+            return Err(
+                "source or configuration changed while refreshing applied selection".into(),
+            );
+        }
+        Ok(preview)
+    })();
+    match refreshed {
+        Ok(preview) => {
+            report["currentBinding"] = preview["currentBinding"].clone();
+            report["apply"] = preview["apply"].clone();
+        }
+        Err(error) => {
+            report["state"] = json!("applied_current_changed");
+            report["currentBinding"] = Value::Null;
+            report["apply"] = Value::Null;
+            report["diagnostic"] = json!(error
+                .chars()
+                .filter(|c| !c.is_control())
+                .take(512)
+                .collect::<String>());
+            report["nextAction"] = json!({"type": "inspect", "safe": true,
+                "command": [executable.to_str().ok_or("executable path is not UTF-8")?,
+                    "project", "architecture", "--json", "--config", loaded.path.to_str().ok_or("configuration path is not UTF-8")?]});
+        }
+    }
     Ok(report)
 }
 
@@ -168,5 +215,126 @@ fn lock_configuration(loaded: &Loaded) -> Result<fs::File, String> {
             "architecture selection apply requires POSIX file locking; preview remains read-only"
                 .into(),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn committed_selection_never_rebinds_a_noop_to_a_concurrent_replacement() {
+        if !crate::compatibility::is_exitbind() {
+            return;
+        }
+        let root = std::env::temp_dir().join(format!(
+            "exitbind-selection-race-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap()
+        ));
+        fs::create_dir(&root).unwrap();
+        let mut git = std::process::Command::new("git");
+        for key in [
+            "GIT_DIR",
+            "GIT_WORK_TREE",
+            "GIT_COMMON_DIR",
+            "GIT_INDEX_FILE",
+            "GIT_CEILING_DIRECTORIES",
+            "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+        ] {
+            git.env_remove(key);
+        }
+        assert!(git
+            .args(["-C", root.to_str().unwrap(), "init", "--quiet"])
+            .status()
+            .unwrap()
+            .success());
+        let configuration = crate::project::onboarding::init_with_options(
+            crate::project::onboarding::InitOptions {
+                product_root: root.to_str().unwrap(),
+                coffee: false,
+                skip_skills: true,
+                mode: Some("portable"),
+                project_id: None,
+                control_root: None,
+                state_root: None,
+            },
+        )
+        .unwrap();
+        for revision in ["A", "B"] {
+            fs::write(
+                root.join(format!("{revision}.json")),
+                json!({"version":1,"revision":revision,
+                "responsibilities":[{"id":"core","summary":"core","paths":["core"]}],
+                "dependencies":[],"interfaces":[],"checks":[]})
+                .to_string(),
+            )
+            .unwrap();
+        }
+        let loaded = crate::config::load(configuration.to_str()).unwrap();
+        let preview = select(
+            &loaded,
+            "A.json",
+            "reviewed",
+            "project selected A",
+            None,
+            false,
+        )
+        .unwrap();
+        let path = configuration.clone();
+        AFTER_WRITE.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move || {
+                let current = crate::config::load(path.to_str()).unwrap();
+                let proposed = select(
+                    &current,
+                    "B.json",
+                    "reviewed",
+                    "project selected B",
+                    None,
+                    false,
+                )
+                .unwrap();
+                let applied = select(
+                    &current,
+                    "B.json",
+                    "reviewed",
+                    "project selected B",
+                    proposed["currentBinding"].as_str(),
+                    true,
+                )
+                .unwrap();
+                assert_eq!(applied["state"], "applied");
+            }))
+        });
+        let result = select(
+            &loaded,
+            "A.json",
+            "reviewed",
+            "project selected A",
+            preview["currentBinding"].as_str(),
+            true,
+        )
+        .unwrap();
+        assert_eq!(result["effect"], "applied");
+        assert_eq!(result["selection"]["revision"], "A");
+        assert_eq!(result["state"], "applied_current_changed");
+        assert!(result["apply"].is_null());
+        assert!(result["currentBinding"].is_null());
+        assert_eq!(result["nextAction"]["type"], "inspect");
+        assert_eq!(result["nextAction"]["safe"], true);
+        let current = crate::config::load(configuration.to_str()).unwrap();
+        assert_eq!(
+            current.architecture_contract.as_ref().unwrap().revision,
+            "B"
+        );
+        assert!(select(
+            &current,
+            "A.json",
+            "reviewed",
+            "project selected A",
+            preview["currentBinding"].as_str(),
+            true
+        )
+        .is_err());
+        fs::remove_dir_all(root).unwrap();
     }
 }
