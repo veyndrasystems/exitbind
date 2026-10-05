@@ -251,9 +251,9 @@ exitbind run observe-check .exitbind/runs/checked.jsonl \
 
 This local observation runs synchronously in the configured ProductRoot with
 the invoking environment and permissions. It has a 1,800,000 ms (30 minute)
-default deadline; both `work check WORK` and `run observe-check` accept an explicit
-`--timeout-ms MS` from 1 to 86,400,000. Pass a positive override when a different
-bounded deadline is appropriate. It keeps command output off JSON stdout,
+default deadline; both `work check WORK` and `run observe-check` accept a
+positive `--timeout-ms MS` override from 1 to 86,400,000 when a different bounded
+deadline is appropriate. It keeps command output off JSON stdout,
 records normal exits and POSIX signals as distinct results, and writes no check
 event when launch, timeout, or durable binding fails. On timeout it terminates
 the spawned POSIX process group and reaps the command process. The command runs
