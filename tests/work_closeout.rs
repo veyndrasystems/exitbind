@@ -441,6 +441,88 @@ fn cross_project_missing_and_invalid_export_options_refuse_without_writes() {
 }
 
 #[test]
+fn unrepresentable_output_refuses_before_write_and_representable_long_output_replays() {
+    use std::{
+        ffi::CString,
+        os::unix::io::{AsRawFd, FromRawFd},
+    };
+
+    let fixture = Fixture::new("closeout-output-reply-bound");
+    let (work, accepted) = fixture.accepted();
+    let ledger = fixture
+        .root
+        .join(accepted["reference"]["ledger"].as_str().unwrap());
+    let ledger_before = fs::read(&ledger).unwrap();
+    let mut directory = fs::File::open(fixture.root.join(".exitbind/receipts")).unwrap();
+    let mut destination = String::from(".exitbind/receipts");
+    // Build owned real directories one component at a time. A single OS path
+    // lookup cannot reach the negative case, while the product's secure
+    // descriptor traversal supports it and must refuse before creating a leaf.
+    for number in 0..80 {
+        let segment = format!("segment{number:03}{}", "x".repeat(110));
+        let name = CString::new(segment.as_str()).unwrap();
+        let made = unsafe { libc::mkdirat(directory.as_raw_fd(), name.as_ptr(), 0o700) };
+        assert_eq!(made, 0, "{}", std::io::Error::last_os_error());
+        let descriptor = unsafe {
+            libc::openat(
+                directory.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        assert!(descriptor >= 0, "{}", std::io::Error::last_os_error());
+        directory = unsafe { fs::File::from_raw_fd(descriptor) };
+        destination.push('/');
+        destination.push_str(&segment);
+        if number == 19 {
+            let supported = format!("{destination}/supported.json");
+            assert!(supported.len() > 2400);
+            for (option, expected) in [
+                ("--output", "created_verified"),
+                ("--output", "existing_verified"),
+                ("--receipt", "existing_verified"),
+            ] {
+                let output = fixture.call(&["work", "closeout", &work, option, &supported], b"");
+                assert!(output.status.success(), "{output:?}");
+                assert!(output.stdout.len() <= 8 * 1024);
+                let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+                assert_eq!(result["receipt"]["state"], expected);
+                assert_eq!(result["receipt"]["pathOmitted"], true);
+                assert_eq!(result["effectiveAction"]["exists"], false);
+            }
+        }
+    }
+    destination.push_str("/proof.json");
+    assert!(destination.len() > 8 * 1024);
+    for _ in 0..2 {
+        let output = fixture.call(&["work", "closeout", &work, "--output", &destination], b"");
+        assert!(!output.status.success(), "{output:?}");
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("exceeds its bounded channel"));
+        let leaf = CString::new("proof.json").unwrap();
+        let descriptor = unsafe {
+            libc::openat(
+                directory.as_raw_fd(),
+                leaf.as_ptr(),
+                libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        if descriptor >= 0 {
+            drop(unsafe { fs::File::from_raw_fd(descriptor) });
+            panic!("unrepresentable reply created a receipt");
+        }
+        assert_eq!(
+            std::io::Error::last_os_error().kind(),
+            std::io::ErrorKind::NotFound
+        );
+    }
+    let missing = fixture.call(&["work", "closeout", &work, "--receipt", &destination], b"");
+    assert!(!missing.status.success());
+    assert!(String::from_utf8_lossy(&missing.stderr).contains("requested Work receipt is missing"));
+    assert_eq!(fs::read(ledger).unwrap(), ledger_before);
+}
+
+#[test]
 fn long_config_routes_require_exact_arguments_and_terminal_output_stays_bounded() {
     let parent = support::temp("closeout-long-path");
     let mut root = parent.clone();

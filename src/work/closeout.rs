@@ -124,6 +124,24 @@ fn verified(loaded: &Loaded, canonical: &Value, bytes: &[u8]) -> Result<Value, S
     Ok(value["producer"].clone())
 }
 
+fn receipt_reply(
+    mut result: Value,
+    loaded: &Loaded,
+    work: &str,
+    destination: &str,
+    bytes: &[u8],
+    producer: &Value,
+    created: bool,
+) -> Result<Value, String> {
+    result["receipt"] = json!({"state": if created { "created_verified" } else { "existing_verified" },
+        "available": true, "path": if destination.len() <= 1024 { json!(destination) } else { Value::Null },
+        "pathOmitted": destination.len() > 1024, "sha256": hash::bytes(bytes), "producer": producer,
+        "verification": {"valid": true, "format": "exit-path-v1", "exactWork": true},
+        "verify": {"command": command(loaded, work, &["--receipt", destination]), "readOnly": true}});
+    result["effect"] = json!(if created { "exported" } else { "no-change" });
+    bounded(result)
+}
+
 pub(crate) fn closeout(
     loaded: &Loaded,
     work: &str,
@@ -176,6 +194,21 @@ pub(crate) fn closeout(
                 .map_err(|error| error.to_string())?
                 + "\n")
                 .into_bytes();
+            let producer = verified(loaded, &canonical, &bytes)?;
+            // Refuse before creating evidence if its exact reply cannot fit.
+            // Preflight replay too: a successful export must remain readable
+            // after a lost reply, whose existing-state spelling is longer.
+            for created in [true, false] {
+                receipt_reply(
+                    result.clone(),
+                    loaded,
+                    work,
+                    &destination,
+                    &bytes,
+                    &producer,
+                    created,
+                )?;
+            }
             #[cfg(unix)]
             match path::secure_create_new(&loaded.state_root, &destination, "Work receipt") {
                 Ok(mut file) => {
@@ -202,11 +235,13 @@ pub(crate) fn closeout(
     if read(loaded, &destination)?.as_deref() != Some(bytes.as_slice()) {
         return Err("Work receipt changed during verification".into());
     }
-    result["receipt"] = json!({"state": if created { "created_verified" } else { "existing_verified" },
-        "available": true, "path": if destination.len() <= 1024 { json!(destination) } else { Value::Null },
-        "pathOmitted": destination.len() > 1024, "sha256": hash::bytes(&bytes), "producer": producer,
-        "verification": {"valid": true, "format": "exit-path-v1", "exactWork": true},
-        "verify": {"command": command(loaded, work, &["--receipt", &destination]), "readOnly": true}});
-    result["effect"] = json!(if created { "exported" } else { "no-change" });
-    bounded(result)
+    receipt_reply(
+        result,
+        loaded,
+        work,
+        &destination,
+        &bytes,
+        &producer,
+        created,
+    )
 }

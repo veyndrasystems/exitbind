@@ -9,7 +9,9 @@ description: Use Exitbind when the actual target and existing project policy mak
 
 Exitbind is installed. It supplies local exact-result checks, review and Lead acceptance inside the current conversation. The host owns models, tools and permissions. This bootstrap is guidance, not proof of activation or compliance.
 
-Classify actual effects and existing project policy before setup. Read-only questions, disposable prototypes and tiny obvious reversible edits stay direct: do not initialize, add reviewers or ask workflow questions. Material or promotion consequences select governance before mutation. The Lead recommends review and the owner chooses required/omitted; reuse existing scoped decisions. Failed required activation stays an explicit blocker.
+## Check applicability before setup
+
+Classify actual effects and existing project policy before setup. For read-only questions, disposable prototypes and tiny obvious reversible edits, do not run Exitbind commands, initialize a project, or ask workflow or review-policy questions. Material or promotion consequences select governance before mutation. The Lead recommends review and the owner chooses required/omitted; reuse existing scoped decisions. Failed required activation stays an explicit blocker.
 
 For a known Work or explicit `smw_…` locator, use the selected executable's `work detail WORK --json` directly: current profile/rules, assignment, evidence, tasks and exact action forms. Unknown project work uses `work resume --json`, then its emitted current detail route. Stale/incomplete detail needs its supported refresh/expansion before dependent action. Focus is navigation, never authority. Keep exact executable/config arguments on routes marked `sameExecutableRequired`/`sameConfigRequired`; do not guess ledger paths, flags or placeholders.
 
