@@ -119,7 +119,10 @@ configuration and the governed Work start.
 
 ## Work and return in the same conversation
 
-For a configured Codex worker or reviewer, the lead can use `work act` to run
+For a known Work, `work detail WORK --json` delivers its current role/profile,
+verified evidence and executable actions directly. Use `work resume --json`
+when the project Work is unknown. For a configured Codex worker or reviewer,
+the lead can follow the product-managed action in that detail to run
 one pending assignment with its verified profile and context. Later calls run
 the separately declared check or record an explicit lead decision. Saved
 native results can return through the same work; replay does not start another
@@ -154,8 +157,13 @@ In checked runs, Exitbind refuses acceptance when the configured check result is
 Exitbind records the frozen command, its actual outcome and hashed logs, a
 fingerprint of covered project files, and separate work/review/lead decisions.
 A host-reported check is labelled `reported`; one Exitbind ran is `observed`.
-An accepted checked run can produce a verifiable receipt covering recorded
-artifacts. A receipt does not prove that the code is correct. See
+An accepted checked Work exposes a separate optional `completion` export
+route. When durable proof is requested, `work closeout WORK --export` resolves
+and creates/verifies the existing Exit Path receipt; repeats verify the same
+destination without overwriting it or repeating acceptance. Plain `work
+closeout WORK` is read-only. Historical acceptance and current evidence
+availability remain separate. An accepted checked run can produce a
+verifiable receipt covering recorded artifacts. A receipt does not prove that the code is correct. See
 [receipt limits](REFERENCE.md#exit-path-receipt-and-verification).
 
 The host controls native tools and permissions; repository protection retains

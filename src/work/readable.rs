@@ -95,7 +95,9 @@ fn read_after_reads(
                 .into(),
         );
     }
-    response(loaded, work, &binding, &canonical, sections, recipient)
+    response(
+        loaded, work, &binding, &canonical, sections, recipient, snapshot,
+    )
 }
 
 pub(crate) fn current(loaded: &Loaded, work: &str) -> Result<Value, String> {
@@ -190,6 +192,7 @@ fn response(
     next: &Value,
     sections: Map<String, Value>,
     recipient: Value,
+    snapshot: &RunSnapshot,
 ) -> Result<Value, String> {
     let readable_complete =
         evidence_complete(&sections["evidence"]) && recipient["complete"] == true;
@@ -209,6 +212,9 @@ fn response(
         "actionForms": super::action_forms::full(loaded, work, next, binding),
         "transport": {"encoding": "utf-8", "exact": readable_complete, "modelPaging": false},
     });
+    if next["action"] == "done" {
+        value["completion"] = super::closeout::projection(loaded, work, snapshot, next);
+    }
     let canonical = json!({
         "current":{"action":next["action"], "binding":binding, "readiness":next["progress"]["state"]},
         "actionForms":value["actionForms"], "warnings":next["warnings"],

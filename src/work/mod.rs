@@ -3,6 +3,7 @@
 pub(crate) mod action;
 pub(crate) mod action_forms;
 mod check;
+pub(crate) mod closeout;
 pub(crate) mod compact;
 pub(crate) mod details;
 mod disposition;
@@ -29,6 +30,7 @@ use std::path::Path;
 pub(crate) use action::{act, ActOptions};
 pub(crate) use check::check_with_timeout;
 pub(crate) use disposition::{dispose, DispositionOptions};
+pub(crate) use focus::valid_work_handle;
 pub(crate) use permit_response::permit;
 pub(crate) use resume::resume;
 pub(crate) use return_result_impl::return_result;
@@ -167,10 +169,6 @@ pub(crate) fn begin(loaded: &Loaded, options: BeginOptions<'_>) -> Result<Value,
         Err(error) => focus::recovery(loaded, &work, &error),
     };
     Ok(json!({"work": work, "next": next, "focus": focus}))
-}
-
-pub(crate) fn valid_work_handle(work: &str) -> bool {
-    work.strip_prefix(WORK_PREFIX).is_some_and(valid_token)
 }
 
 /// Point navigation at an explicit, existing work. This changes no ledger.

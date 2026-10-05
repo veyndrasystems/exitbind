@@ -10,6 +10,7 @@ pub(crate) fn delivery_packet(assignment: &Value) -> Value {
 }
 
 pub(crate) struct ActOptions<'a> {
+    pub(crate) current_binding: Option<&'a str>,
     pub(crate) outcome: Option<&'a str>,
     pub(crate) reason: Option<&'a str>,
     pub(crate) codex_bin: Option<&'a str>,
@@ -24,6 +25,7 @@ pub(crate) struct ActOptions<'a> {
 }
 
 pub(crate) fn act(loaded: &Loaded, work: &str, options: ActOptions<'_>) -> Result<Value, String> {
+    details::ensure_action_binding(loaded, work, options.current_binding)?;
     let ledger = resolve(loaded, work)?;
     let current = next_for(loaded, work, &ledger)?;
     if options.inspect {

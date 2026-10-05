@@ -636,8 +636,10 @@ cell and its support matrix are described in
 [controlled file effects](docs/controlled-file-effects.md).
 
 For governed Work, the lead uses `exitbind work act WORK [--model MODEL]
-[--reasoning-effort EFFORT]` on the current action from `work next WORK
---full`. A worker or reviewer action launches Codex with the checked packet
+[--reasoning-effort EFFORT]` through the current detail's
+`actionForms.productManaged.command` when the configured role selects Codex.
+Its `--current-binding` fence refuses stale delivery before provider execution;
+the companion inspect command is read-only. A worker or reviewer action launches Codex with the checked packet
 and profile and records one structured native result. The reviewer receives
 the packet-bound current worker result. A later check action runs the frozen
 check (`work check WORK` is also available); a later Lead action requires an
@@ -662,7 +664,9 @@ checked on its actual descriptor before reading and before returning content.
 Hard links, including ordinary source aliases, refuse without disclosure.
 Neither route intercepts other native tools or remote effects.
 
-`work next WORK --json` also exposes `current.details.grouped`, a versioned
+For a known Work or explicit locator, `work detail WORK --json` is the direct
+ordinary current read. Unknown project Work uses `work resume --json` and its
+emitted detail route. `work next WORK --json` also exposes `current.details.grouped`, a versioned
 `ref:work-detail:v1:<binding>` route for ordinary consumers. `work detail WORK
 --json` reads the same current route directly. The product validates the
 ledger, configuration, recipient and task binding, then returns grouped
@@ -700,6 +704,34 @@ Preparation has an immutable, synced record beside the Work ledger; missing
 session state refuses reconstruction. Preserve private StateRoot integrity:
 joint loss of both preparation record and session is indistinguishable from
 first use. See the linked guide for recovery limits.
+
+`work closeout WORK [--export | --output PATH | --receipt PATH] --json`
+resolves the exact Work through existing receipt owners. Without an export or
+receipt request it is read-only and returns recorded Work acceptance, canonical
+goal/task readiness, current evidence availability and the optional export argv.
+Terminal compact responses expose this as `current.completion`; complete detail
+exposes `completion`. Terminal `effectiveAction.exists=false` still denotes no
+Work advancement. A canonical external goal remains separate from Work readiness
+and any publication/install obligations it records.
+
+`--export` creates the existing `exit-path-v1` receipt at the Work-specific path
+beneath StateRoot's managed receipts directory. `--output PATH` is an explicit
+export to another normalized StateRoot path beneath existing real directories.
+When StateRoot is ProductRoot, new exports stay beneath its managed receipts
+directory so the export cannot invalidate the checked product inputs.
+No symlink directory/leaf alias, hard-linked receipt or outside destination is
+accepted. Existing files are never overwritten: a repeated/lost-reply export
+succeeds only if those bytes verify for this exact Work. `--receipt PATH` checks
+existing evidence read-only and cannot combine with export options. Corrupt,
+missing, stale or cross-project evidence refuses without changing the ledger,
+permits, checks, review or acceptance. Closeout responses stay within 8 KiB.
+
+Historical ledger receipts retain their existing validation meaning through
+`receipt`/`verify`. Current Work closeout additionally uses the established result
+reference evidence owner to require current configuration, profiles, artifacts
+and bound tested inputs; an old unbound or stale accepted Work remains historical
+and has no current export action. This does not add a receipt prerequisite to
+previously completed Work or to small direct work.
 
 `work world WORK [--plain --reduced-motion]` reads six canonical event motifs.
 `--export --json` omits private task markers and source text. `work next

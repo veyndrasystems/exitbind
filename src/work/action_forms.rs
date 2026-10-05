@@ -104,6 +104,14 @@ pub(crate) fn project(loaded: &Loaded, work: &str, next: &Value, binding: &str) 
             }
         }
     }
+    if let Some(native) = result
+        .get_mut("productManaged")
+        .and_then(Value::as_object_mut)
+    {
+        native.remove("command");
+        native.remove("inspect");
+        native.insert("requiresDetail".into(), json!(true));
+    }
     result["detail"] = json!({
         "route": "current.details.grouped",
         "binding": binding,
@@ -303,6 +311,27 @@ pub(crate) fn full(loaded: &Loaded, work: &str, next: &Value, binding: &str) -> 
             .collect()
     };
     result["choices"] = json!(choices);
+    if next["action"] == "spawn"
+        && matches!(next["role"].as_str(), Some("worker" | "reviewer"))
+        && next["agent"]
+            .as_str()
+            .and_then(|name| loaded.agent(name))
+            .is_some_and(|agent| agent.runtime.host.as_deref() == Some("codex"))
+    {
+        let suffix = vec![
+            "work".into(),
+            "act".into(),
+            work.into(),
+            "--current-binding".into(),
+            binding.into(),
+        ];
+        let mut inspect = suffix.clone();
+        inspect.push("--inspect".into());
+        result["productManaged"] = json!({"host": "codex", "command": command(loaded, suffix),
+            "inspect": {"command": command(loaded, inspect), "readOnly": true},
+            "profileSha256": next["packet"]["profileSha256"],
+            "meaning": "when the Lead selects product-managed delivery, execute one current configured native role; the provider supplies its own verdict and the host owns model access/permissions"});
+    }
     if next["action"] == "spawn" && next["role"] == "worker" {
         result["beforeEditing"] = json!({
             "command": command(loaded, vec!["work".into(), "permit".into(), work.into(),

@@ -29,6 +29,7 @@ EXPECTED_FILES = {
     ".claude-plugin/plugin.json",
     "skills/exitbind/SKILL.md",
     "skills/exitbind/references/preservation.md",
+    "skills/exitbind/references/operators.md",
 }
 FORBIDDEN_COMPONENTS = {
     "hooks",
@@ -213,8 +214,13 @@ def package_files(package: Path, errors: list[str]) -> set[str]:
 
 
 def check_skill(repo_root: Path, package: Path, errors: list[str]) -> None:
-    canonical = repo_root / CANONICAL_SKILL
-    bundled = package / "skills/exitbind/SKILL.md"
+    for relative in [CANONICAL_SKILL, "skills/exitbind/references/preservation.md", "skills/exitbind/references/operators.md"]:
+        check_skill_asset(repo_root, package, relative, errors)
+
+
+def check_skill_asset(repo_root: Path, package: Path, relative: str, errors: list[str]) -> None:
+    canonical = repo_root / relative
+    bundled = package / relative
     try:
         canonical_bytes = canonical.read_bytes()
         bundled_bytes = bundled.read_bytes()
